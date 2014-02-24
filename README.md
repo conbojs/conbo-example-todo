@@ -1,6 +1,10 @@
 Conbo.js Todo Application Example
 =================================
 
-Simple Todo application example using the Conbo.js framework, based on the Backbone.js example at TodoMVC.com
+Simple Todo application examples using the Conbo.js framework, based on the TodoMVC.com template to enable easy comparison with other MVC frameworks (although while they're good example of Conbo.js capabilities, they should be viewed at rapid prototypes rather than examples of best-practice).
 
-This example is a rapid conversion intended to demonstrate how Conbo.js compares with other frameworks, but should not be taken as an example of best-practice.
+Examples
+--------
+
+* **lodash-templates** demonstrates the use of Conbo.js in combination with the Lo-Dash/Underscore templating system
+* **cb-bind** (coming soon) will demonstrate the same application using Conbo.js's built-in data binding, which is the way we'd generally recommend doing things
