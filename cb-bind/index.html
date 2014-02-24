@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	
+	<head>
+		<meta charset="utf-8">
+		<title>Conbo.js - Todo Application Example</title>
+		<link rel="stylesheet" href="css/base.css">
+	</head>
+	
+	<body>
+		
+		<!-- The cb-app attribute can be used to specify the root element of your application -->
+		<section cb-app="TodoApplication" id="todoapp">
+			<header id="header">
+				<h1>todos</h1>
+				<input id="new-todo" placeholder="What needs to be done?" autofocus>
+			</header>
+			<section id="main">
+				<input id="toggle-all" type="checkbox">
+				<label for="toggle-all">Mark all as complete</label>
+				<ul id="todo-list"></ul>
+			</section>
+			<footer id="footer">
+				<!-- You can bind properties to DOM elements using cb-bind in the format property|parseFunction -->
+				<span id="todo-count"><strong cb-bind="remaining"></strong> <span cb-bind="remaining|itemOrItems"></span> left</span>
+				<ul id="filters">
+					<li>
+						<a class="selected" href="#/">All</a>
+					</li>
+					<li>
+						<a href="#/active">Active</a>
+					</li>
+					<li>
+						<a href="#/completed">Completed</a>
+					</li>
+				</ul>
+				<button id="clear-completed">Clear completed (<span cb-bind="completed"></span>)</button>
+			</footer>
+		</section>
+		
+		<footer id="info">
+			<p>Double-click to edit a todo</p>
+		</footer>
+		
+		<script type="text/template" id="item-template">
+			<div class="view">
+				<!--
+				Using cb-bind with input elements will automatically create a 2-way binding between 
+				the bound property and DOM element: change one, the other changes automatically
+				-->
+				<input class="toggle" type="checkbox" cb-bind="model.completed">
+				<!-- Using cb-bind with view-only DOM elements creates a one-way binding -->
+				<label cb-bind="model.title"></label>
+				<button class="destroy"></button>
+			</div>
+			<input class="edit" cb-bind="model.title">
+		</script>
+		
+		<script src="libs/jquery.js"></script>
+		<script src="libs/lodash.js"></script>
+		<script src="libs/conbo.js"></script>
+		<script src="libs/conbo-localstorage.js"></script>
+		
+		<script src="js/todo-example.js"></script>
+		
+	</body>
+	
+</html>
