@@ -298,25 +298,14 @@
 		remaining: 0,
 		
 		/**
-		 * Instead of generating a new element, bind to the existing skeleton of
-		 * the App already present in the HTML.
-		 */
-		el: '#todoapp',
-		
-		/**
 		 * Our template for the line of statistics at the bottom of the app.
 		 */
 		statsTemplate: $('#stats-template').html(),
 		
 		/**
-		 * Delegated events for creating new items, and clearing completed ones.
+		 * Are all items checked?
 		 */
-		events: 
-		{
-			'keypress #new-todo': 'createOnEnter',
-			'click #clear-completed': 'clearCompleted',
-			'click #toggle-all': 'toggleAllComplete'
-		},
+		allChecked: false,
 		
 		/**
 		 * At initialization we bind to the relevant events on the `Todos`
@@ -325,7 +314,9 @@
 		 */
 		initialize: function () 
 		{
-			this.allCheckbox = this.$('#toggle-all')[0];
+			this.bindAll();
+			
+			//this.allCheckbox = this.$('#toggle-all')[0];
 			this.$input = this.$('#new-todo');
 			this.$footer = this.$('#footer');
 			this.$main = this.$('#main');
@@ -371,7 +362,7 @@
 				this.$footer.hide();
 			}
 			
-			this.allCheckbox.checked = !this.remaining;
+			this.set('allChecked', !this.remaining);
 		},
 		
 		/**
@@ -467,9 +458,9 @@
 
 		toggleAllComplete: function () 
 		{
-			var completed = this.allCheckbox.checked;
-
-			this.todos.each(function (todo) 
+			var completed = this.allChecked;
+			
+			this.todos.each(function(todo) 
 			{
 				todo.save({completed:completed});
 			});

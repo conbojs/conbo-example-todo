@@ -13,16 +13,18 @@
 		<section cb-app="TodoApplication" id="todoapp">
 			<header id="header">
 				<h1>todos</h1>
-				<input id="new-todo" placeholder="What needs to be done?" autofocus>
+				<!-- You can bind most standard DOM events to your View using cb-* attributes -->
+				<input id="new-todo" cb-keypress="createOnEnter" placeholder="What needs to be done?" autofocus>
 			</header>
 			<section id="main">
-				<input id="toggle-all" type="checkbox">
+				<input id="toggle-all" type="checkbox" cb-click="toggleAllComplete" cb-checked="allChecked">
 				<label for="toggle-all">Mark all as complete</label>
 				<ul id="todo-list"></ul>
 			</section>
+			<!-- With cb-* data binding, the IDs are only needed for CSS purposes -->
 			<footer id="footer">
-				<!-- You can bind properties to DOM elements using cb-bind in the format property|parseFunction -->
-				<span id="todo-count"><strong cb-bind="remaining"></strong> <span cb-bind="remaining|itemOrItems"></span> left</span>
+				<!-- You can bind properties to DOM elements using cb-* attributes in the format property|parseFunction -->
+				<span id="todo-count"><strong cb-html="remaining"></strong> <span cb-html="remaining|itemOrItems"></span> left</span>
 				<ul id="filters">
 					<li>
 						<a class="selected" href="#/">All</a>
@@ -34,7 +36,7 @@
 						<a href="#/completed">Completed</a>
 					</li>
 				</ul>
-				<button id="clear-completed">Clear completed (<span cb-bind="completed"></span>)</button>
+				<button cb-show="completed" cb-click="clearCompleted">Clear completed (<span cb-bind="completed"></span>)</button>
 			</footer>
 		</section>
 		
