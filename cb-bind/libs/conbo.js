@@ -27,7 +27,7 @@
 	{
 		var conbo = 
 		{
-			VERSION:'1.2.2',
+			VERSION:'1.2.5',
 			_:_, 
 			$:$,
 			
@@ -74,10 +74,10 @@ if (!String.prototype.trim)
 
 if (!Object.prototype.hasOwnProperty) 
 {
-	Object.prototype.hasOwnProperty = function(prop) 
+	Object.prototype.hasOwnProperty = function(value) 
 	{
-		return _.has(this, prop);
-	};
+		return value in this;
+	}; 
 }
 
 /* 
@@ -129,7 +129,7 @@ $.expr[':'].cbAttr = function(el, index, meta, stack)
 	
 	if (!cb) return false;
 	if (!!cb && !args.length) return true;
-	if (!!args[0] && !args[1]) return cb.hasOwnProperty(args[0]);
+	if (!!args[0] && !args[1]) return args[0] in cb;
 	if (!!args[0] && !!args[1]) return cb[args[0]] == args[1];
 	return false;
 };
@@ -699,7 +699,7 @@ conbo.Bindable = conbo.EventDispatcher.extend
 		
 		if (options.unset)
 		{
-			changed = _.has(a, attributes);
+			changed = (attributes in a);
 			delete a[attributes];
 		}
 		else if (_.isFunction(a[attributes]))
@@ -891,7 +891,7 @@ conbo.Context = conbo.EventDispatcher.extend
 		{
 			if (obj[a] !== undefined) continue;
 			
-			if (this._singletons.hasOwnProperty(a))
+			if (a in this._singletons)
 			{
 				obj[a] = this._singletons[a];
 			}
@@ -996,7 +996,7 @@ var hashMethods = ['keys', 'values', 'pairs', 'invert', 'pick', 'omit', 'size'];
 //Mix in each available Lo-Dash/Underscore method as a proxy to `Model#attributes`.
 _.each(hashMethods, function(method)
 {
-	if (!_.has(_, method)) return;
+	if (!(method in _)) return;
 	
 	conbo.Hash.prototype[method] = function() 
 	{
@@ -1202,27 +1202,37 @@ conbo.BindingUtils = conbo.Class.extend({},
 			return this;
 		}
 		
-		var isEvent = this._isEvent(attributeName);
-		
-		if (isEvent && !_.isFunction(source[propertyName]))
-		{
-			throw new Error('DOM events can only be bound to functions');
-		}
-		
-		if (!isEvent && !(source instanceof conbo.Bindable))
-		{
-			throw new Error('Source is not Bindable');
-		}
-		
 		if (!element)
 		{
 			throw new Error('element is undefined');
 		}
 		
-		if (attributeName == "bind")
+		if (attributeName == "bind" || attributeName == "model")
 		{
 			this.bindElement(source, propertyName, element, parseFunction);
 			return this;
+		}
+		
+		var isConbo = false,
+			isNative = false,
+			updateAttribute;
+		
+		var split = attributeName.replace(/([A-Z])/g, ' $1').toLowerCase().split(' ');
+		
+		switch (true)
+		{
+			case split[0] == 'attr':
+			{
+				attributeName = attributeName.substr(4);
+				isNative = attributeName in element;
+				break;
+			}
+			
+			default:
+			{
+				isConbo = attributeName in conbo.AttributeBindings;
+				isNative = !isConbo && attributeName in element;
+			}
 		}
 		
 		parseFunction = parseFunction || function(value)
@@ -1230,15 +1240,16 @@ conbo.BindingUtils = conbo.Class.extend({},
 			return value; 
 		};
 		
-		var isProperty = conbo.AttributeBindings.hasOwnProperty(attributeName),
-			isNative = element.hasOwnProperty(attributeName),
-			updateAttribute;
-		
 		switch (true)
 		{
 			// If we have a bespoke handler for this attribute, use it
-			case isProperty:
+			case isConbo:
 			{
+				if (!(source instanceof conbo.Bindable))
+				{
+					throw new Error('Source is not Bindable');
+				}
+				
 				updateAttribute = function()
 				{
 					conbo.AttributeBindings[attributeName](parseFunction(source.get(propertyName)), element);
@@ -1250,39 +1261,55 @@ conbo.BindingUtils = conbo.Class.extend({},
 				break;
 			}
 			
-			// ... if it's an event, add a listener
-			case isEvent:
-			{
-				$(element).on(attributeName.toLowerCase(), source[propertyName]);
-				return this;
-			}
-			
-			// ... otherwise, bind directly to the native property if there is one
 			case isNative:
 			{
-				updateAttribute = function()
+				switch (true)
 				{
-					var value;
+					// If it's an event, add a listener
+					case attributeName.indexOf('on') == 0:
+					{
+						if (!_.isFunction(source[propertyName]))
+						{
+							throw new Error('DOM events can only be bound to functions');
+						}
+						
+						$(element).on(attributeName.substr(2), source[propertyName]);
+						return this;
+					}
 					
-					value = parseFunction(source.get(propertyName));
-					value = _.isBoolean(element[attributeName]) ? !!value : value;
-					
-					element[attributeName] = value;
+					// ... otherwise, bind to the native property
+					default:
+					{
+						if (!(source instanceof conbo.Bindable))
+						{
+							throw new Error('Source is not Bindable');
+						}
+						
+						updateAttribute = function()
+						{
+							var value;
+							
+							value = parseFunction(source.get(propertyName));
+							value = _.isBoolean(element[attributeName]) ? !!value : value;
+							
+							element[attributeName] = value;
+						}
+					    
+						source.on('change:'+propertyName, updateAttribute);
+						updateAttribute();
+						
+						$(element).on('input change', function()
+		     			{
+		     				source.set(propertyName, element[attributeName]);
+		     			});
+						
+						break;
+					}
 				}
-			    
-				source.on('change:'+propertyName, updateAttribute);
-				updateAttribute();
 				
 				break;
 			}
-		}
-		// If it's a native property, add a reverse binding too
-		if (isNative)
-		{
-			$(element).on('input change', function()
-   			{
-   				source.set(propertyName, element[attributeName]);
-   			});
+			
 		}
 		
 		return this;
@@ -1320,7 +1347,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 			{
 				var d = cbData[key],
 					b = d.split('|'),
-					s = scope._cleanPropName(b[0]).split('.'),
+					s = scope.cleanPropertyName(b[0]).split('.'),
 					p = s.pop(),
 					m,
 					f;
@@ -1333,7 +1360,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 				
 				try
 				{
-					f = !!b[1] ? eval('view.'+scope._cleanPropName(b[1])) : undefined;
+					f = !!b[1] ? eval('view.'+scope.cleanPropertyName(b[1])) : undefined;
 					f = _.isFunction(f) ? f : undefined;
 				}
 				catch (e) {}
@@ -1397,7 +1424,11 @@ conbo.BindingUtils = conbo.Class.extend({},
 		
 		if (!_.isFunction(setterFunction))
 		{
-			if (!setterFunction || !_.has(setterFunction, propertyName)) throw new Error('Invalid setter function');
+			if (!setterFunction || !(propertyName in setterFunction))
+			{
+				throw new Error('Invalid setter function');
+			}
+			
 			setterFunction = setterFunction[propertyName];
 		}
 		
@@ -1409,31 +1440,21 @@ conbo.BindingUtils = conbo.Class.extend({},
 		return this;
 	},
 	
+	/**
+	 * Remove everything except alphanumberic and dots from Strings
+	 * 
+	 * @private
+	 * @param 		{String}	view		String value to clean
+	 * @returns		{String}
+	 */
+	cleanPropertyName: function(value)
+	{
+		return (value || '').replace(/[^\w\.]/g, '');
+	},
+	
 	toString: function()
 	{
 		return 'conbo.BindingUtils';
-	},
-	
-	/**
-	 * Bindable events
-	 * TODO Add as many as possible!
-	 * @private
-	 */
-	_events: 
-	[
-		'click', 'dblclick', 
-		'mousedown', 'mouseup', 'mouseenter', 'mouseleave', 'mousemove', 
-		'keydown', 'keypress', 'keyup',
-		'focus', 'blur'
-	],
-	
-	/**
-	 * Is the specified String a supported event?
-	 * @param {String}	value
-	 */
-	_isEvent: function(value)
-	{
-		return this._events.indexOf(value.toLowerCase()) != -1;
 	},
 	
 	/**
@@ -1452,18 +1473,6 @@ conbo.BindingUtils = conbo.Class.extend({},
 	_isReservedAttribute: function(value)
 	{
 		this._reservedAttributes.indexOf(value) != -1;
-	},
-	
-	/**
-	 * Remove everything except alphanumberic and dots from Strings
-	 * 
-	 * @private
-	 * @param 		{String}	view		String value to clean
-	 * @returns		{String}
-	 */
-	_cleanPropName: function(value)
-	{
-		return (value || '').replace(/[^\w\.]/g, '');
 	}
 	
 });
@@ -1805,8 +1814,9 @@ conbo.View = conbo.Bindable.extend
 	 * This only works for delegate-able events: not `focus`, `blur`, and
 	 * not `change`, `submit`, and `reset` in Internet Explorer.
 	 * 
-	 * @param	events
-	 * @returns this
+	 * @deprecated	Use cb-* attributes and bindView() instead
+	 * @param		events
+	 * @returns 	this
 	 */
 	delegateEvents: function(events) 
 	{
@@ -2363,9 +2373,9 @@ conbo.Model = conbo.Hash.extend
 	hasChanged: function(attr) 
 	{
 		if (attr == null) return !_.isEmpty(this.changed);
-		return _.has(this.changed, attr);
+		return attr in this.changed;
 	},
-
+	
 	/**
 	 * Return an object containing all the attributes that have changed, or
 	 * false if there are no changed attributes. Useful for determining what
@@ -3293,7 +3303,7 @@ var methods =
 // Mix in each available Underscore/Lo-Dash method as a proxy to `Collection#models`.
 _.each(methods, function(method) 
 {
-	if (!_.has(_, method)) return;
+	if (!(method in _)) return;
 	
 	conbo.Collection.prototype[method] = function() 
 	{
@@ -3309,7 +3319,7 @@ var attributeMethods = ['groupBy', 'countBy', 'sortBy'];
 // Use attributes instead of properties.
 _.each(attributeMethods, function(method)
 {
-	if (!_.has(_, method)) return;
+	if (!(method in _)) return;
 	
 	conbo.Collection.prototype[method] = function(value, context) 
 	{

@@ -17,7 +17,7 @@
 				<input id="new-todo" cb-keypress="createOnEnter" placeholder="What needs to be done?" autofocus>
 			</header>
 			<section id="main">
-				<input id="toggle-all" type="checkbox" cb-click="toggleAllComplete" cb-checked="allChecked">
+				<input id="toggle-all" type="checkbox" cb-onclick="toggleAllComplete" cb-checked="allChecked">
 				<label for="toggle-all">Mark all as complete</label>
 				<ul id="todo-list"></ul>
 			</section>
@@ -36,7 +36,7 @@
 						<a href="#/completed">Completed</a>
 					</li>
 				</ul>
-				<button id="clear-completed" cb-show="completed" cb-click="clearCompleted">Clear completed (<span cb-bind="completed"></span>)</button>
+				<button id="clear-completed" cb-show="completed" cb-onclick="clearCompleted">Clear completed (<span cb-bind="completed"></span>)</button>
 			</footer>
 		</section>
 		
