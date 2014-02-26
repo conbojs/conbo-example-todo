@@ -6,6 +6,8 @@
  * but in your own projects we recommend splitting your code into a
  * more sensible file/folder structure.
  * 
+ * **This example app works, but is still a work in progress**
+ * 
  * @author	Neil Rackett
  */
 (function(window, document, conbo, $, _, undefined)
