@@ -27,7 +27,7 @@
 	{
 		var conbo = 
 		{
-			VERSION:'1.2.5',
+			VERSION:'1.3.0',
 			_:_, 
 			$:$,
 			
@@ -104,77 +104,65 @@ _.isFunction = function(value)
  * @author		Neil Rackett
  */
 
-$.fn.cbData = function()
+if (!!$)
 {
-	var data = {},
-		attrs = this.get()[0].attributes,
-		count = 0;
-	
-	for (var i=0; i<attrs.length; ++i)
+	$.fn.cbData = function()
 	{
-		if (attrs[i].name.indexOf('cb-') != 0) continue;
-		var propertyName = attrs[i].name.substr(3).replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
-		data[propertyName] = attrs[i].value;
-		++count;
+		var data = {},
+			attrs = this.get()[0].attributes,
+			count = 0;
+		
+		for (var i=0; i<attrs.length; ++i)
+		{
+			if (attrs[i].name.indexOf('cb-') != 0) continue;
+			var propertyName = attrs[i].name.substr(3).replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
+			data[propertyName] = attrs[i].value;
+			++count;
+		}
+		
+		return !!count ? data : undefined;
 	}
 	
-	return !!count ? data : undefined;
-}
-
-$.expr[':'].cbAttr = function(el, index, meta, stack)
-{
-	var $el = $(el),
-		args = (meta[3] || '').split(','),
-		cb = $el.cbData();
+	$.expr[':'].cbAttr = function(el, index, meta, stack)
+	{
+		var $el = $(el),
+			args = (meta[3] || '').split(','),
+			cb = $el.cbData();
+		
+		if (!cb) return false;
+		if (!!cb && !args.length) return true;
+		if (!!args[0] && !args[1]) return args[0] in cb;
+		if (!!args[0] && !!args[1]) return cb[args[0]] == args[1];
+		return false;
+	};
 	
-	if (!cb) return false;
-	if (!!cb && !args.length) return true;
-	if (!!args[0] && !args[1]) return args[0] in cb;
-	if (!!args[0] && !!args[1]) return cb[args[0]] == args[1];
-	return false;
-};
-
+}
 /**
  * CSS styles and utilities
  * @author 	Neil Rackett
  */
 
-conbo.cssClassExists = function (className) 
+if (!!$)
 {
-	var styleSheets = document.styleSheets;
-	
-	for (var s=0; s<styleSheets.length; s++) 
+	$(function()
 	{
-		var classes = styleSheets[s].rules || document.styleSheets[s].cssRules;
+		var $head = $('head');
 		
-		for (var c=0; c<classes.length; c++) 
+		if (!!$head.find('#cb-css').length)
 		{
-			if (classes[c].selectorText == className) 
-			{
-				return true;               
-			}
+			return;
 		}
-	}
-	
-	return false;
-};
-
-$(function()
-{
-	if (conbo.cssClassExists('.cb-hide'))
-	{
-		return;
-	}
-	
-	$('head').append($
-	(
-		'<style type="text/css">'+
-			'.cb-hide { visibility:hidden !important; }'+
-			'.cb-exclude { display:none !important; }'+
-			'.cb-disable { pointer-events:none !important; cursor:default !important; }'+
-		'</style>'
-	));
-});
+		
+		$('head').append($
+		(
+			'<style id="cb-css" type="text/css">'+
+				'.cb-hide { visibility:hidden !important; }'+
+				'.cb-exclude { display:none !important; }'+
+				'.cb-disable { pointer-events:none !important; cursor:default !important; }'+
+			'</style>'
+		));
+	});
+}
 
 /**
  * Class
@@ -237,12 +225,12 @@ conbo.Class.prototype =
 	 */
 	defineAccessor: function(name, getter, setter, initialValue)
 	{
-		getter = getter || function() { return this['_'+name]; };
-		setter = setter || function(value) { this['_'+name] = value; return this; };
+		getter || (getter = function() { return this['_'+name]; });
+		setter || (setter = function(value) { this['_'+name] = value; return this; });
 		
 		this[name] = function()
 		{
-			return (arguments.length ? setter : getter).apply(this, arguments);
+			return (!!arguments.length ? setter : getter).apply(this, arguments);
 		};
 		
 		if (initialValue !== undefined)
@@ -258,7 +246,7 @@ conbo.Class.prototype =
 	 * @param 	method
 	 * @returns
 	 */
-	bind: function(method)
+	proxy: function(method)
 	{
 		return _.bind.apply(_, [method, this].concat(_.rest(arguments)));
 	},
@@ -267,7 +255,7 @@ conbo.Class.prototype =
 	 * Scope all methods of this class instance to this class instance
 	 * @returns this
 	 */
-	bindAll: function()
+	proxyAll: function()
 	{
 		_.bindAll.apply(_, [this].concat(_.toArray(arguments)))
 		return this;
@@ -339,11 +327,16 @@ conbo.Injectable = conbo.Class.extend
 	{
 		options || (options = {});
 		
-		this.defineAccessor('context', undefined, undefined, _.result(this, 'context') || options.context);
-		if (!!this.context()) this.context().injectSingletons(this);
+		this.context = _.result(this, 'context') || options.context;
+		
+		if (!!this.context) 
+		{
+			this.context.injectSingletons(this);
+		}
 		
 		return this;
 	}
+	
 });
 
 /**
@@ -482,6 +475,8 @@ conbo.ConboEvent = conbo.Event.extend
 	
 	ROUTE:		"route", 	// (Properties: router, route, params) � Fired by history (or router) when any route has been matched.
 							// "route:[name]" // (Properties: params) � Fired by the router when a specific route is matched.
+	
+	TEMPLATE_LOADED:	"templateloaded",
 	
 	ALL:		"all", 		// special event fires for any triggered event
 });
@@ -777,7 +772,7 @@ conbo.Context = conbo.EventDispatcher.extend
 		this._commands = {};
 		this._singletons = {};
 		
-		this.defineAccessor('app', undefined, undefined, options.app);
+		this.app = options.app;
 		
 		this.on(conbo.Event.ALL, this._allHandler);
 		this.initialize.apply(this, arguments);
@@ -1015,11 +1010,24 @@ _.each(hashMethods, function(method)
  */
 conbo.AttributeBindings = conbo.Class.extend({},
 {
+	/**
+	 * Makes an element visible
+	 * 
+	 * @param value
+	 * @param el
+	 */
 	show: function(value, el)
 	{
 		this.hide(!value, el);
 	},
 	
+	/**
+	 * Hides an element by making it invisible, but does not remove
+	 * if from the layout of the page, meaning a blank space will remain
+	 * 
+	 * @param value
+	 * @param el
+	 */
 	hide: function(value, el)
 	{
 		var $el = $(el);
@@ -1029,11 +1037,24 @@ conbo.AttributeBindings = conbo.Class.extend({},
 			: $el.removeClass('cb-hide');
 	},
 	
+	/**
+	 * Include an element on the screen and in the layout of the page
+	 * 
+	 * @param value
+	 * @param el
+	 */
 	include: function(value, el)
 	{
 		this.exclude(!value, el);
 	},
 	
+	/**
+	 * Remove an element from the screen and prevent it having an effect
+	 * on the layout of the page
+	 * 
+	 * @param value
+	 * @param el
+	 */
 	exclude: function(value, el)
 	{
 		var $el = $(el);
@@ -1043,10 +1064,37 @@ conbo.AttributeBindings = conbo.Class.extend({},
 			: $el.removeClass('cb-exclude');
 	},
 	
+	/**
+	 * Inserts raw HTML into the element, which is rendered as HTML
+	 * 
+	 * @param value
+	 * @param el
+	 */
 	html: function(value, el)
 	{
 		$(el).html(value);
+	},
+	
+	/**
+	 * Inserts text into the element so that it appears on screen exactly as
+	 * it's written by converting special characters (<, >, &, etc) into HTML
+	 * entities before rendering them, e.g. "8 < 10" -> "8 &lt; 10"
+	 * 
+	 * @param value
+	 * @param el
+	 */
+	text: function(value, el)
+	{
+		if (!value) value = '';
+		
+		var textArea;
+		
+		textArea = document.createElement('textarea');
+		textArea.innerHTML = value;
+		
+		$(el).html(textArea.innerHTML);
 	}
+	
 });
 /**
  * Binding utility class
@@ -1059,21 +1107,21 @@ conbo.AttributeBindings = conbo.Class.extend({},
 conbo.BindingUtils = conbo.Class.extend({},
 {
 	/**
-	 * Bind a property of a Bindable class instance (e.g. Map or Model) 
+	 * Bind a property of a Bindable class instance (e.g. Hash or Model) 
 	 * to a DOM element's value/content, using Conbo's best judgement to
 	 * work out how the value should be bound to the element.
 	 * 
 	 * This method of binding also allows for the use of a parse function,
 	 * which can be used to manipulate bound data in real time
 	 * 
-	 * @param 		{conbo.Bindable}	source			Class instance which extends from conbo.Bindable (e.g. Hash or Model)
-	 * @param 		{String} 			propertyName	Property name to bind
-	 * @param 		{DOMElement} 		element			DOM element to bind value to (two-way bind on input/form elements)
-	 * @param 		{Function}			parseFunction	Optional method used to parse values before outputting as HTML
+	 * @param 		{conbo.Bindable}	source				Class instance which extends from conbo.Bindable (e.g. Hash or Model)
+	 * @param 		{String} 			propertyName		Property name to bind
+	 * @param 		{DOMElement} 		element				DOM element to bind value to (two-way bind on input/form elements)
+	 * @param 		{Function}			parseFunction		Optional method used to parse values before outputting as HTML
 	 * 
 	 * @deprecated						Use bindAttribute
 	 * @see								bindAttribute
-	 * @returns		{this}
+	 * @returns		{Array}									Array of bindings
 	 */
 	bindElement: function(source, propertyName, element, parseFunction)
 	{
@@ -1087,10 +1135,11 @@ conbo.BindingUtils = conbo.Class.extend({},
 			throw new Error('element is undefined');
 		}
 		
-		parseFunction = parseFunction || function(value)
-		{
-			return typeof(value) == 'undefined' ? '' : String(value); 
-		};
+		var bindings = [],
+			eventType,
+			eventHandler;
+		
+		parseFunction || (parseFunction = this.defaultParseFunction);
 		
 		$(element).each(function(index, el)
 		{
@@ -1111,15 +1160,25 @@ conbo.BindingUtils = conbo.Class.extend({},
 						{
 							$el.prop('checked', !!source.get(propertyName));
 							
-							source.on('change:'+propertyName, function(event)
+							eventType = 'change:'+propertyName;
+							
+							eventHandler = function(event)
 							{
 								$el.prop('checked', !!event.value);
-							});
+							};
 							
-							$el.on('input change', function(event)
+							source.on(eventType, eventHandler);
+							bindings.push([source, eventType, eventHandler]);
+							
+							eventType = 'input change';
+							
+							eventHandler = function(event)
 							{	
 								source.set(propertyName, $el.is(':checked'));
-							});
+							};
+							
+							$el.on(eventType, eventHandler);
+							bindings.push([$el, eventType, eventHandler]);
 							
 							return;
 						}
@@ -1128,11 +1187,16 @@ conbo.BindingUtils = conbo.Class.extend({},
 						{
 							if ($el.val() == source.get(propertyName)) $el.prop('checked', true);
 							
-							source.on('change:'+propertyName, function(event)
+							eventType = 'change:'+propertyName;
+							
+							eventHandler = function(event)
 							{
 								if ($el.val() != event.value) return; 
 								$el.prop('checked', true);
-							});
+							};
+							
+							source.on(eventType, eventHandler);
+							bindings.push([source, eventType, eventHandler]);
 							
 							break;
 						}
@@ -1141,20 +1205,30 @@ conbo.BindingUtils = conbo.Class.extend({},
 						{
 							$el.val(source.get(propertyName));
 						
-							source.on('change:'+propertyName, function(event)
+							eventType = 'change:'+propertyName;
+							
+							eventHandler = function(event)
 							{
 								if ($el.val() == event.value) return;
 								$el.val(event.value);
-							});
+							};
+							
+							source.on(eventType, eventHandler);
+							bindings.push([source, eventType, eventHandler]);
 							
 							break;
 						}
 					}
 					
-					$el.on('input change', function(event)
+					eventType = 'input change';
+					
+					eventHandler = function(event)
 					{	
 						source.set(propertyName, $el.val() || $el.html());
-					});
+					};
+					
+					$el.on(eventType, eventHandler);
+					bindings.push([$el, eventType, eventHandler]);
 					
 					break;
 				}
@@ -1163,11 +1237,16 @@ conbo.BindingUtils = conbo.Class.extend({},
 				{
 					$el.html(parseFunction(source.get(propertyName)));
 					
-					source.on('change:'+propertyName, function(event) 
+					eventType = 'change:'+propertyName;
+					
+					eventHandler = function(event) 
 					{
 						var html = parseFunction(event.value);
 						$el.html(html);
-					});
+					};
+					
+					source.on(eventType, eventHandler);
+					bindings.push([source, eventType, eventHandler]);
 					
 					break;
 				}
@@ -1175,7 +1254,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 			
 		});
 		
-		return this;
+		return bindings;
 	},
 	
 	/**
@@ -1193,13 +1272,13 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 * @param 	{String}			attributeName	The cb-* property to bind against in camelCase, e.g. "propName" for "cb-prop-name"
 	 * @param 	{Function} 			parseFunction	Optional method used to parse values before outputting as HTML
 	 * 
-	 * @returns	{this}
+	 * @returns	{Array}								Array of bindings
 	 */
 	bindAttribute: function(source, propertyName, element, attributeName, parseFunction)
 	{
 		if (this._isReservedAttribute(attributeName))
 		{
-			return this;
+			return [];
 		}
 		
 		if (!element)
@@ -1209,13 +1288,14 @@ conbo.BindingUtils = conbo.Class.extend({},
 		
 		if (attributeName == "bind" || attributeName == "model")
 		{
-			this.bindElement(source, propertyName, element, parseFunction);
-			return this;
+			return this.bindElement(source, propertyName, element, parseFunction);
 		}
 		
-		var isConbo = false,
+		var bindings = [],
+			isConbo = false,
 			isNative = false,
-			updateAttribute;
+			eventType,
+			eventHandler;
 		
 		var split = attributeName.replace(/([A-Z])/g, ' $1').toLowerCase().split(' ');
 		
@@ -1235,10 +1315,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 			}
 		}
 		
-		parseFunction = parseFunction || function(value)
-		{
-			return value; 
-		};
+		parseFunction || (parseFunction = this.defaultParseFunction);
 		
 		switch (true)
 		{
@@ -1250,13 +1327,17 @@ conbo.BindingUtils = conbo.Class.extend({},
 					throw new Error('Source is not Bindable');
 				}
 				
-				updateAttribute = function()
+				eventHandler = function()
 				{
 					conbo.AttributeBindings[attributeName](parseFunction(source.get(propertyName)), element);
 				}
 				
-				source.on('change:'+propertyName, updateAttribute);
-				updateAttribute();
+				eventType = 'change:'+propertyName;
+				
+				source.on(eventType, eventHandler);
+				eventHandler();
+				
+				bindings.push([source, eventType, eventHandler]);
 				
 				break;
 			}
@@ -1265,6 +1346,10 @@ conbo.BindingUtils = conbo.Class.extend({},
 			{
 				switch (true)
 				{
+					case !attributeName.indexOf('on') == 0 && _.isFunction(element[attributeName]):
+						console.warn('cb-'+attributeName+' is not a recognised attribute, did you mean cb-on'+attributeName+'?');
+						break;
+						
 					// If it's an event, add a listener
 					case attributeName.indexOf('on') == 0:
 					{
@@ -1285,7 +1370,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 							throw new Error('Source is not Bindable');
 						}
 						
-						updateAttribute = function()
+						eventHandler = function()
 						{
 							var value;
 							
@@ -1295,13 +1380,23 @@ conbo.BindingUtils = conbo.Class.extend({},
 							element[attributeName] = value;
 						}
 					    
-						source.on('change:'+propertyName, updateAttribute);
-						updateAttribute();
+						eventType = 'change:'+propertyName;
+						source.on(eventType, eventHandler);
+						eventHandler();
 						
-						$(element).on('input change', function()
+						bindings.push([source, eventType, eventHandler]);
+						
+						var $el = $(element);
+						
+						eventHandler = function()
 		     			{
 		     				source.set(propertyName, element[attributeName]);
-		     			});
+		     			};
+						
+		     			eventType = 'input change';
+						$el.on(eventType, eventHandler);
+						
+						bindings.push([$el, eventType, eventHandler]);
 						
 						break;
 					}
@@ -1310,14 +1405,19 @@ conbo.BindingUtils = conbo.Class.extend({},
 				break;
 			}
 			
+			default:
+			{
+				console.warn('cb-'+attributeName+' is not recognised or does not exist on specified element');
+				break;
+			}
 		}
 		
-		return this;
+		return bindings;
 	},
 	
 	/**
 	 * Bind everything within the DOM scope of a View to the specified 
-	 * properties of Bindable class instances (e.g. Map or Model)
+	 * properties of Bindable class instances (e.g. Hash or Model)
 	 * 
 	 * @param 	{conbo.View}		view		The View class controlling the element
 	 * @returns	{this}
@@ -1329,22 +1429,37 @@ conbo.BindingUtils = conbo.Class.extend({},
 			throw new Error('view is undefined');
 		}
 		
-		var nestedViews = view.$('.cb-view, [cb-view]'),
+		if (!!view._bindings)
+		{
+			this.unbindView(view);
+		}
+		
+		var bindings = [],
+			nestedViews = view.$('.cb-view, [cb-view], .cb-app, [cb-app]'),
 			scope = this;
 		
-		view.$('*').filter(function()
+		view.$('*').add(view.$el).filter(function()
 		{
 			return !nestedViews.find(this).length;
 		})
 		.each(function(index, el)
 		{
 			var cbData = $(el).cbData();
-			if (!cbData) return;
+			
+			if (!cbData) 
+			{
+				return;
+			}
 			
 			var keys = _.keys(cbData);
 			
 			keys.forEach(function(key)
 			{
+				if (scope._isReservedAttribute(key))
+				{
+					return;
+				}
+				
 				var d = cbData[key],
 					b = d.split('|'),
 					s = scope.cleanPropertyName(b[0]).split('.'),
@@ -1368,14 +1483,62 @@ conbo.BindingUtils = conbo.Class.extend({},
 				if (!m) throw new Error(b[0]+' is not defined in this View');
 				if (!p) throw new Error('Unable to bind to undefined property: '+p);
 				
-				scope.bindAttribute(m, p, el, key, f);
-				
-			}, view);
+				bindings = bindings.concat(scope.bindAttribute(m, p, el, key, f));
+			});
 		});
+		
+		view._bindings = bindings;
+		
+		return this;
 	},
 	
 	/**
-	 * Bind the property of one Bindable class instance (e.g. Map or Model) to another
+	 * Removes all data binding from the specified View instance
+	 * @param 	{conbo.View}	view
+	 * @return	{this}
+	 */
+	unbindView: function(view)
+	{
+		if (!view)
+		{
+			throw new Error('view is undefined');
+		}
+		
+		if (!view._bindings || !view._bindings.length)
+		{
+			return this;
+		}
+		
+		var bindings = view._bindings;
+		
+		while (bindings.length)
+		{
+			var binding = bindings.pop();
+			
+			switch (true)
+			{
+				case binding[0] instanceof $:
+				case binding[0] instanceof conbo.EventDispatcher:
+				{
+					binding[0].off(binding[1], binding[2]);
+					break;
+				}
+				
+				default:
+				{
+					binding[0].removeEventListener(binding[1], binding[2]);
+					break;
+				}
+			}
+		}
+		
+		delete view._bindings;
+		
+		return this;
+	},
+	
+	/**
+	 * Bind the property of one Bindable class instance (e.g. Hash or Model) to another
 	 * 
 	 * @param 	{conbo.Bindable}	source						Class instance which extends conbo.Bindable
 	 * @param 	{String}			sourcePropertyName			Source property name
@@ -1412,7 +1575,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 	
 	/**
 	 * Call a setter function when the specified property of a Bindable 
-	 * class instance (e.g. Map or Model) is changed
+	 * class instance (e.g. Hash or Model) is changed
 	 * 
 	 * @param 	{conbo.Bindable}	source				Class instance which extends conbo.Bindable
 	 * @param 	{String}			propertyName
@@ -1438,6 +1601,17 @@ conbo.BindingUtils = conbo.Class.extend({},
 		});
 		
 		return this;
+	},
+	
+	/**
+	 * Default parse function
+	 * 
+	 * @param	value
+	 * @returns	{any}
+	 */
+	defaultParseFunction: function(value)
+	{
+		return typeof(value) == 'undefined' ? '' : value;
 	},
 	
 	/**
@@ -1472,27 +1646,10 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 */
 	_isReservedAttribute: function(value)
 	{
-		this._reservedAttributes.indexOf(value) != -1;
+		return this._reservedAttributes.indexOf(value) != -1;
 	}
 	
 });
-
-/**
- * List of view options to be merged as properties.
- */
-var viewOptions = 
-[
-	'model', 
-	'collection', 
-	'el', 
-	'id', 
-	'attributes', 
-	'className', 
-	'tagName', 
-	'events',
-	'template',
-	'templateUrl'
-];
 
 /**
  * View
@@ -1531,7 +1688,7 @@ conbo.View = conbo.Bindable.extend
 		
 		if (!!templateUrl)
 		{
-			this.load(templateUrl);
+			this.loadTemplate(templateUrl);
 		}
 		else
 		{
@@ -1542,7 +1699,6 @@ conbo.View = conbo.Bindable.extend
 			
 			this.render();
 			this.bindView();
-			this.delegateEvents();
 		}
 	},
 	
@@ -1588,42 +1744,38 @@ conbo.View = conbo.Bindable.extend
 	 */
 	remove: function() 
 	{
-		this.$el.remove();
-		
 		this.unbindView()
 			.off();
+		
+		this.$el.remove();
 		
 		return this;
 	},
 	
 	/**
-	 * Change the view's element (`this.el` property), including event
-	 * re-delegation.
+	 * Change the view's element (`this.el` property) and re-bind events
 	 */
-	setElement: function(element, delegate)
+	setElement: function(element)
 	{
-		var isReplacement = !!this.$el;
+		var isBound = this.isBound();
 		
-		if (isReplacement)
-		{
-			this.undelegateEvents()
-				.unbindView();
-		}
+		if (isBound) this.unbindView();
 		
 		this.$el = $(element);
 		this.el = this.$el[0];
 		
-		if (delegate !== false)
-		{
-			this.delegateEvents();
-		}
-		
-		if (isReplacement && !(this instanceof conbo.Application))
-		{
-			this.bindView();
-		}
+		if (isBound) this.bindView();
 		
 		return this;
+	},
+	
+	/**
+	 * Has this view already been bound to its associated element?
+	 * @returns
+	 */
+	isBound: function()
+	{
+		return !!this._bindings;
 	},
 	
 	/**
@@ -1677,36 +1829,6 @@ conbo.View = conbo.Bindable.extend
 	},
 	
 	/**
-	 * Enables or disabled mouse/touch interaction with this view
-	 * @param 	value	Boolean
-	 * @returns
-	 */
-	mouseEnabled: function(value)
-	{
-		return this._setClass.apply(this, _.union(['cb-disable'], _.toArray(arguments)));
-	},
-	
-	/**
-	 * Hides view, but takes up the same space as before
-	 * @param 		value	Boolean
-	 * @returns		
-	 */
-	visible: function(value)
-	{
-		return this._setClass.apply(this, _.union(['cb-hide'], _.toArray(arguments)));
-	},
-	
-	/**
-	 * Hide view and display as if the element is not there
-	 * @param value
-	 * @returns
-	 */
-	includeInLayout: function(value)
-	{
-		return this._setClass.apply(this, _.union(['cb-exclude'], _.toArray(arguments)));
-	},
-	
-	/**
 	 * Automatically bind elements to properties of this View
 	 * 
 	 * @example	<div cb-bind="property|parseMethod" cb-hide="property">Hello!</div> 
@@ -1724,43 +1846,45 @@ conbo.View = conbo.Bindable.extend
 	 */
 	unbindView: function() 
 	{
-		// TODO Implement unbindView()
+		conbo.BindingUtils.unbindView(this);
 		return this;
 	},
 	
 	/**
-	 * Loads HTML content into this.el
+	 * Loads HTML template and apply it to this.el, storing the loaded
+	 * template will in this.template
 	 * 
-	 * @param 	url			A string containing the URL to which the request is sent
-	 * @param 	data		A plain object or string that is sent to the server with the request
-	 * @param 	complete	Callback in format function(responseText, textStatus, xmlHttpRequest)
+	 * @param 	{String}	url			A string containing the URL to which the request is sent
+	 * @param 	{Object}	data		A plain object or string that is sent to the server with the request
+	 * @param 	{Function} 	callback	Callback in format function(responseText, textStatus, xmlHttpRequest)
 	 * 
 	 * @see					https://api.jquery.com/load/
 	 */
-	load: function(url, data, callbackFunction)
+	loadTemplate: function(url, data, callbackFunction)
 	{
 		this.unbindView();
-		this.undelegateEvents();
 		
-		var completeHandler = this.bind(function(response, status, xhr)
+		var completeHandler = this.proxy(function(response, status, xhr)
 		{
 			this.template = response;
 			
 			if (!!callbackFunction) callbackFunction.apply(this, arguments);
 			
+			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.TEMPLATE_LOADED));
 			this.render();
 			this.bindView();
-			this.delegateEvents();
 		});
 		
 		this.$el.load(url, data, completeHandler);
 	},
 	
 	/**
-	 * Loads a CSS and apply it
-	 * @param	url		The URL of the CSS
+	 * Loads a CSS and apply it to the DOM
+	 * 
+	 * @param 	{String}	url			A string containing the URL to which the request is sent
+	 * @param 	{Function} 	callback	Callback in format function(success)
 	 */
-	loadCSS: function(url, callback)
+	loadCSS: function(url, callbackFunction)
 	{
 		if (!('document' in window)) return this;
 		
@@ -1778,7 +1902,7 @@ conbo.View = conbo.Bindable.extend
 				{
 					clearInterval(successInterval);
 					clearTimeout(errorTimeout);
-					callback(true);
+					callbackFunction(true);
 				}
 			}
 			catch(e) {}
@@ -1789,7 +1913,7 @@ conbo.View = conbo.Bindable.extend
 			clearInterval(successInterval);
 			clearTimeout(errorTimeout);
 			$link.remove();
-			callback(false);
+			callbackFunction(false);
 		}, 15000);
 		
 		$('head').append($link);
@@ -1797,73 +1921,26 @@ conbo.View = conbo.Bindable.extend
 		return this;
 	},
 	
-	/**
-	 * Set callbacks, where `this.events` is a hash of
-	 * 
-	 * *{"event selector": "callback"}*
-	 *
-	 *     {
-	 *       'mousedown .title':  'edit',
-	 *       'click .button':     'save'
-	 *       'click .open':       function(e) { ... }
-	 *     }
-	 *
-	 * pairs. Callbacks will be bound to the view, with `this` set properly.
-	 * Uses event delegation for efficiency.
-	 * Omitting the selector binds the event to `this.el`.
-	 * This only works for delegate-able events: not `focus`, `blur`, and
-	 * not `change`, `submit`, and `reset` in Internet Explorer.
-	 * 
-	 * @deprecated	Use cb-* attributes and bindView() instead
-	 * @param		events
-	 * @returns 	this
-	 */
-	delegateEvents: function(events) 
-	{
-		if (!(events || (events = _.result(this, 'events')))) return;
-		
-		this.undelegateEvents();
-		
-		for (var key in events)
-		{
-			var method = events[key];
-			
-			if (!_.isFunction(method)) method = this[events[key]];
-			if (!method) throw new Error('Method "' + events[key] + '" does not exist');
-			
-			var match = key.match(/^(\S+)\s*(.*)$/);
-			var eventName = match[1], selector = match[2];
-			
-			method = _.bind(method, this);
-			eventName += '.delegateEvents' + this.cid;
-			
-			if (selector === '') 
-			{
-				this.$el.on(eventName, method);
-			}
-			else
-			{
-				this.$el.on(eventName, selector, method);
-			}
-		}
-		return this;
-	},
-	
-	/**
-	 * Clears all callbacks previously bound to the view with `delegateEvents`.
-	 * You usually don't need to use this, but may wish to if you have multiple
-	 * conbo views attached to the same DOM element.
-	 */
-	undelegateEvents: function() 
-	{
-		this.$el.off('.delegateEvents' + this.cid);
-		return this;
-	},
-	
 	toString: function()
 	{
 		return 'conbo.View';
 	},
+	
+	/**
+	 * List of view options to be merged as properties.
+	 */
+	_viewOptions: 
+	[
+		'model', 
+		'collection', 
+		'el', 
+		'id', 
+		'attributes', 
+		'className', 
+		'tagName', 
+		'template',
+		'templateUrl'
+	],	
 	
 	/**
 	 * Performs the initial configuration of a View with a set of options.
@@ -1875,7 +1952,7 @@ conbo.View = conbo.Bindable.extend
 	_configure: function(options) 
 	{
 		if (this.options) options = _.extend({}, _.result(this, 'options'), options);
-		_.extend(this, _.pick(options, viewOptions));
+		_.extend(this, _.pick(options, this._viewOptions));
 		this.options = options;
 	},
 	
@@ -1895,37 +1972,21 @@ conbo.View = conbo.Bindable.extend
 			if (this.id) attrs.id = _.result(this, 'id');
 			if (this.className) attrs['class'] = _.result(this, 'className');
 			var $el = $('<' + _.result(this, 'tagName') + '>').attr(attrs);
-			this.setElement($el, false);
+			this.setElement($el);
 		}
 		else 
 		{
-			this.setElement(_.result(this, 'el'), false);
+			this.setElement(_.result(this, 'el'));
 			if (!!this.className) this.$el.addClass(this.className);
+		}
+		
+		if (this instanceof conbo.Application)
+		{
+			this.$el.addClass('cb-app');
 		}
 		
 		this.$el.addClass('cb-view');
 	},
-	
-	/**
-	 * @private
-	 */
-	_setClass: function(className, value)
-	{
-		var a = _.rest(arguments);
-		
-		if (!a.length) return !this.$el.hasClass(className);
-		
-		var isElement = _.isString(value) || _.isElement(value) || value instanceof $;
-		var $el = isElement ? this.$(value) : this.$el;
-		
-		if (a.length == 1 && isElement) return !$el.hasClass(className);
-		if (a.length == 2 && isElement) value = a[1];
-		
-		$el.removeClass(className);
-		if (!value) $el.addClass(className);
-		
-		return this;
-	}
 });
 
 //jQuery method shortcuts
@@ -1961,47 +2022,17 @@ conbo.Application = conbo.View.extend
 	constructor: function(options)
 	{
 		options = _.clone(options) || {};
+		
+		this.prefix = options.prefix || _.result(this, 'prefix') || '';
+		this.namespace = options.namespace || _.result(this, 'namespace');
+		
 		options.app = this;
-		
-		this.defineAccessor('context', undefined, undefined, new this.contextClass(options)); 
-		this.defineAccessor('prefix', undefined, undefined, options.prefix || this.prefix || '');
-		this.defineAccessor('namespace', undefined, undefined, options.namespace);
-		
-		if (!options.el && options.autoApply !== false)
-		{
-			this.applyApp();
-		}
+		options.context = new this.contextClass(options);
+		options.el || (options.el = this._findAppElement());
 		
 		conbo.View.prototype.constructor.apply(this, arguments);
 		
-		if (options.autoApply !== false)
-		{
-			this.applyViews();
-		}
-	},
-	
-	/**
-	 * Apply this Application class to DOM element with matching cb-app attribute
-	 */
-	applyApp: function()
-	{
-		var appClassName;
-		
-		for (var a in this.namespace())
-		{
-			if (this instanceof this.namespace()[a])
-			{
-				appClassName = a;
-				break;
-			}
-		}
-		
-		var selector = '[cb-app="'+this._addPrefix(appClassName)+'"]';
-		var el = $(selector)[0];
-		
-		if (!!el) this.el = el;
-		
-		return this;
+		this.applyViews();
 	},
 	
 	/**
@@ -2009,16 +2040,16 @@ conbo.Application = conbo.View.extend
 	 */
 	applyViews: function()
 	{
-		var selector = !!this.prefix()
+		var selector = !!this.prefix
 			? '[cb-view^="'+this._addPrefix()+'"]'
 			: '[cb-view]';
 		
-		this.$(selector).each(this.bind(function(index, el)
+		this.$(selector).each(this.proxy(function(index, el)
 		{
 			var view = this.$(el).cbData().view.replace(this._addPrefix(), '');
 			
-			var viewClass = !!this.namespace()
-				? this.namespace()[view]
+			var viewClass = !!this.namespace
+				? this.namespace[view]
 				: eval(view);
 			
 			if (!_.isFunction(viewClass)) 
@@ -2026,7 +2057,7 @@ conbo.Application = conbo.View.extend
 				return;
 			}
 			
-			new viewClass(this.context().addTo({el:el}));
+			new viewClass(this.context.addTo({el:el}));
 			
 		}));
 		
@@ -2039,6 +2070,44 @@ conbo.Application = conbo.View.extend
 	},
 	
 	/**
+	 * Find element with matching cb-app attribute, if it exists
+	 */
+	_findAppElement: function()
+	{
+		var $apps = $('[cb-app]');
+		
+		if (!$apps.length) return undefined;
+		
+		if (!this.namespace)
+		{
+			if (!!$apps.length)
+			{
+				console.warn('Application namespace not specified: unable to bind to cb-app element');
+			}
+			
+			return undefined;
+		}
+		
+		var appName;
+		
+		for (var a in this.namespace)
+		{
+			if (this instanceof this.namespace[a])
+			{
+				appName = a;
+				break;
+			}
+		}
+		
+		if (!appName) return undefined;
+		
+		var selector = '[cb-app="'+this._addPrefix(appName)+'"]',
+			el = $(selector)[0];
+		
+		return !!el ? el : undefined;
+	},
+	
+	/**
 	 * Returns prefixed class name
 	 * @param 	name
 	 * @returns
@@ -2046,7 +2115,7 @@ conbo.Application = conbo.View.extend
 	_addPrefix: function(name)
 	{
 		name = name || '';
-		return !!this.prefix() ? this.prefix()+'.'+name : name;
+		return !!this.prefix ? this.prefix+'.'+name : name;
 	}
 	
 });
@@ -2068,7 +2137,7 @@ conbo.Command = conbo.EventDispatcher.extend
 	constructor: function(options)
 	{
 		this._inject(options);
-		this.defineAccessor('event', undefined, undefined, options.event || {});
+		this.event = options.event || {};
 		this.initialize.apply(this, arguments);
 	},
 	
@@ -2431,7 +2500,7 @@ conbo.Model = conbo.Hash.extend
 		
 		var success = options.success;
 		
-		options.success = this.bind(function(resp)
+		options.success = this.proxy(function(resp)
 		{
 			if (!this.set(this.parse(resp, options), options))
 			{
@@ -2560,7 +2629,7 @@ conbo.Model = conbo.Hash.extend
 		var model = this;
 		var success = options.success;
 		
-		var destroy = this.bind(function() 
+		var destroy = this.proxy(function() 
 		{
 			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.DESTROY,
 			{
@@ -3375,7 +3444,7 @@ conbo.History = conbo.EventDispatcher.extend
 	constructor: function(options)
 	{
 		this.handlers = [];
-		this.bindAll('checkUrl');
+		this.proxyAll('checkUrl');
 		
 		// Ensure that `History` can be used outside of the browser.
 		if (typeof window !== 'undefined')
@@ -3721,7 +3790,7 @@ conbo.Router = conbo.EventDispatcher.extend
 			callback = this[name];
 		}
 		
-		conbo.history.route(route, this.bind(function(fragment)
+		conbo.history.route(route, this.proxy(function(fragment)
 		{
 			var args = this._extractParameters(route, fragment);
 			callback && callback.apply(this, args);

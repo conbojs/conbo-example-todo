@@ -22,7 +22,7 @@
 	 * Todo Model
 	 * Our basic **Todo** model has `title` and `completed` attributes.
 	 */
-	app.Todo = conbo.Model.extend
+	app.TodoModel = conbo.Model.extend
 	({
 		// Default values
 		defaults: 
@@ -34,7 +34,7 @@
 		// Toggle the `completed` state of this todo item.
 		toggle: function () 
 		{
-			this.save({completed: this.get('completed')});
+			this.save({completed: true});
 		}
 	});
 	
@@ -42,15 +42,15 @@
 	 * Todo Collection
 	 * Collection of todos backed by localStorage instead of a remote server.
 	 */
-	app.Todos = conbo.Collection.extend
+	app.TodoCollection = conbo.Collection.extend
 	({
 		/**
 		 * The Conbo.js class to use for this collections models
 		 */
-		model: app.Todo,
-
+		model: app.TodoModel,
+		
 		/**
-		 * Save all of the todo items under the `"todos"` namespace.
+		 * Save all of the todo items in local storage
 		 */
 		localStorage: new conbo.LocalStorage('todos-conbo'),
 		
@@ -107,7 +107,7 @@
 		 */
 		initialize: function()
 		{
-			this.mapSingleton('todos', app.Todos);
+			this.mapSingleton('todoCollection', app.TodoCollection);
 			this.mapSingleton('filterModel', conbo.Model);
 			
 			new app.TodoRouter(this.addTo())
@@ -119,7 +119,7 @@
 	 * Todo Item View
 	 * The DOM element for a todo item...
 	 */
-	app.TodoView = conbo.View.extend
+	app.TodoItemView = conbo.View.extend
 	({
 		/**
 		 * Context wide filter model will be automatically injected
@@ -283,7 +283,7 @@
 		 * Values that are registered in the context and undefined in classes
 		 * are automatically injected
 		 */
-		todos: undefined,
+		todoCollection: undefined,
 		
 		filterModel: undefined,
 		
@@ -314,23 +314,20 @@
 		 */
 		initialize: function () 
 		{
-			this.bindAll();
+			this.proxyAll();
 			
-			//this.allCheckbox = this.$('#toggle-all')[0];
 			this.$input = this.$('#new-todo');
-			this.$footer = this.$('#footer');
-			this.$main = this.$('#main');
 			this.$list = $('#todo-list');
 			
-			this.todos.on('add', this.todos_add, this);
-			this.todos.on('reset', this.todos_reset, this);
-			this.todos.on('change:completed', this.todos_changeCompleted, this);
-			this.todos.on('all', this.render, this);
+			this.todoCollection.on('add', this.todoCollection_add, this);
+			this.todoCollection.on('reset', this.todoCollection_reset, this);
+			this.todoCollection.on('change:completed', this.todoCollection_changeCompleted, this);
+			this.todoCollection.on('all', this.render, this);
 			
 			// Suppresses 'add' events with {reset: true} and prevents the app view
 			// from being re-rendered for every model. Only renders when the 'reset'
 			// event is triggered at the end of the fetch.
-			this.todos.fetch({reset: true});
+			this.todoCollection.fetch({reset: true});
 			
 			this.filterModel.on('change:filter', this.filterModel_change, this);
 		},
@@ -341,15 +338,13 @@
 		 */
 		render: function (event)
 		{
-			this.set('completed', this.todos.completed().length)
-				.set('remaining', this.todos.remaining().length);
+			this.set('completed', this.todoCollection.completed().length)
+				.set('remaining', this.todoCollection.remaining().length);
 			
-			this.visible(this.$('#clear-completed'), !!this.completed);
-			
-			if (!!this.todos.length) 
+			if (!!this.todoCollection.length) 
 			{
-				this.$main.show();
-				this.$footer.show();
+				this.set('mainVisible', true)
+					.set('footerVisible', true);
 				
 				this.$('#filters li a')
 					.removeClass('selected')
@@ -358,8 +353,8 @@
 			}
 			else
 			{
-				this.$main.hide();
-				this.$footer.hide();
+				this.set('mainVisible', false)
+					.set('footerVisible', false);
 			}
 			
 			this.set('allChecked', !this.remaining);
@@ -373,17 +368,17 @@
 			return value == 1 ? 'item' : 'items';
 		},
 		
-		todos_add: function(event)
+		todoCollection_add: function(event)
 		{
 			this.addOne(event.model);
 		},
 		
-		todos_reset: function(event)
+		todoCollection_reset: function(event)
 		{
 			this.addAll();
 		},
 		
-		todos_changeCompleted: function(event)
+		todoCollection_changeCompleted: function(event)
 		{
 			this.filterOne(event.model);
 		},
@@ -394,7 +389,7 @@
 		 */
 		addOne: function (todo) 
 		{
-			var view = new app.TodoView(this.context().addTo({model: todo}));			
+			var view = new app.TodoItemView(this.context.addTo({model: todo}));			
 			this.$list.append(view.el);
 		},
 		
@@ -404,7 +399,7 @@
 		addAll: function () 
 		{
 			this.$list.html('');
-			this.todos.each(this.addOne, this);
+			this.todoCollection.each(this.addOne, this);
 		},
 		
 		filterOne: function (todo) 
@@ -419,7 +414,7 @@
 		
 		filterAll: function () 
 		{
-			this.todos.each(this.filterOne, this);
+			this.todoCollection.each(this.filterOne, this);
 		},
 		
 		/**
@@ -429,7 +424,7 @@
 		{
 			return {
 				title: this.$input.val().trim(),
-				order: this.todos.nextOrder(),
+				order: this.todoCollection.nextOrder(),
 				completed: false
 			};
 		},
@@ -442,7 +437,7 @@
 		{
 			if (e.which === ENTER_KEY && this.$input.val().trim()) 
 			{
-				this.todos.create(this.newAttributes());
+				this.todoCollection.create(this.newAttributes());
 				this.$input.val('');
 			}
 		},
@@ -452,7 +447,7 @@
 		 */
 		clearCompleted: function () 
 		{
-			_.invoke(this.todos.completed(), 'destroy');
+			_.invoke(this.todoCollection.completed(), 'destroy');
 			return false;
 		},
 
@@ -460,7 +455,7 @@
 		{
 			var completed = this.allChecked;
 			
-			this.todos.each(function(todo) 
+			this.todoCollection.each(function(todo) 
 			{
 				todo.save({completed:completed});
 			});
@@ -476,7 +471,7 @@
 		 * Our context wide Todo Collection will automatically be 
 		 * injected by the context
 		 */
-		todos: undefined,
+		todoCollection: undefined,
 		
 		/**
 		 * ... and so will our filter model
@@ -492,9 +487,6 @@
 		{
 			// Set the current filter to be used
 			this.filterModel.set('filter', param || '');
-			
-			// Trigger a collection filter event to hide/unhide Todo Views
-			//this.todos.trigger('filter');
 		}
 	});
 	
