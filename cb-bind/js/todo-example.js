@@ -137,19 +137,6 @@
 		template: $('#item-template').html(),
 		
 		/**
-		 * The DOM events specific to an item.
-		 */
-		events: 
-		{
-			'click .toggle': 	'toggleCompleted',
-			'dblclick label': 	'edit',
-			'click .destroy': 	'clear',
-			'keypress .edit': 	'updateOnEnter',
-			'keydown .edit': 	'revertOnEscape',
-			'blur .edit': 		'close'
-		},
-		
-		/**
 		 * The TodoView listens for changes to its model, re-rendering. Since
 		 * there's a one-to-one correspondence between a **Todo** and a
 		 * **TodoView** in this app, we set a direct reference on the model for
@@ -157,6 +144,8 @@
 		 */
 		initialize: function () 
 		{
+			this.proxyAll();
+			
 			this.model.on('change', this.render, this);
 			this.model.on('destroy', this.remove, this);
 			this.model.on('visible', this.toggleVisible, this);

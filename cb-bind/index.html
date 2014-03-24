@@ -56,11 +56,11 @@
 				Using cb-bind with input elements will automatically create a 2-way binding between 
 				the bound property and DOM element: change one, the other changes automatically
 				-->
-				<input class="toggle" type="checkbox" cb-bind="model.completed">
-				<label cb-html="model.title"></label>
-				<button class="destroy"></button>
+				<input class="toggle" type="checkbox" cb-bind="model.completed" cb-onclick="toggleCompleted">
+				<label cb-html="model.title" cb-ondblclick="edit"></label>
+				<button class="destroy" cb-onclick="clear"></button>
 			</div>
-			<input class="edit" cb-bind="model.title">
+			<input class="edit" cb-bind="model.title" cb-onkeypress="updateOnEnter" cb-onkeydown="revertOnEscape" cb-onblur="close">
 		</script>
 		
 		<script src="libs/jquery.js"></script>

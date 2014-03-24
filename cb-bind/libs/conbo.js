@@ -27,7 +27,7 @@
 	{
 		var conbo = 
 		{
-			VERSION:'1.3.0',
+			VERSION:'1.3.1',
 			_:_, 
 			$:$,
 			
@@ -89,14 +89,9 @@ if (!Object.prototype.hasOwnProperty)
 
 var _isFunction = _.isFunction;
 
-_.isClass = function(value)
-{
-	return value instanceof conbo.Class;
-};
-
 _.isFunction = function(value)
 {
-	return _isFunction(value) && !_.isClass(value);
+	return _isFunction(value) && !conbo.isClass(value);
 };
 
 /*
@@ -106,17 +101,26 @@ _.isFunction = function(value)
 
 if (!!$)
 {
-	$.fn.cbData = function()
+	$.fn.cbAttrs = function(camelCase)
 	{
 		var data = {},
 			attrs = this.get()[0].attributes,
-			count = 0;
+			count = 0,
+			propertyName;
 		
 		for (var i=0; i<attrs.length; ++i)
 		{
 			if (attrs[i].name.indexOf('cb-') != 0) continue;
-			var propertyName = attrs[i].name.substr(3).replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
+			
+			propertyName = attrs[i].name.substr(3);
+			
+			if (camelCase !== false)
+			{
+				propertyName = conbo.toCamelCase(propertyName);
+			}
+			
 			data[propertyName] = attrs[i].value;
+			
 			++count;
 		}
 		
@@ -127,7 +131,7 @@ if (!!$)
 	{
 		var $el = $(el),
 			args = (meta[3] || '').split(','),
-			cb = $el.cbData();
+			cb = $el.cbAttrs();
 		
 		if (!cb) return false;
 		if (!!cb && !args.length) return true;
@@ -188,7 +192,7 @@ conbo.Class.prototype =
 	 */
 	callLater: function(callback)
 	{
-		_.defer(this.bind.apply(this, [callback].concat(_.rest(arguments))));
+		_.defer(this.proxy.apply(this, [callback].concat(_.rest(arguments))));
 		return this;
 	},
 	
@@ -846,8 +850,7 @@ conbo.Context = conbo.EventDispatcher.extend
 		
 		if (this._mapMulti(propertyName, singletonClass, this.mapSingleton)) return;
 		
-		this._singletons[propertyName] =
-			_.isFunction(singletonClass)
+		this._singletons[propertyName] = conbo.isClass(singletonClass)
 			// TODO Improved dynamic class instantiation
 			? new singletonClass(arguments[2], arguments[3], arguments[4])
 			: singletonClass;
@@ -1000,6 +1003,269 @@ _.each(hashMethods, function(method)
 });
 
 /**
+ * List
+ * 
+ * A bindable Array wrapper that can be used as a lightweight alternative to 
+ * conbo.Collection for collections that don't require web service connectivity.
+ * 
+ * Unlike Collection, List doesn't automatically convert added items into
+ * Hash or Model, but does automatically detect if Bindable objects are added
+ * to it and automatically watches them for changes
+ */
+conbo.List = conbo.EventDispatcher.extend
+({
+	/**
+	 * Constructor: DO NOT override! (Use initialize instead)
+	 * @param options
+	 */
+	constructor: function(models, options) 
+	{
+		options || (options = {});
+		
+		this.proxyAll('_redispatch');
+		this.length = 0;
+		
+		this._models = (models || []).slice();
+		this._inject(options);
+		
+		this.initialize.apply(this, arguments);
+	},
+	
+	/**
+	 * Initialize is an empty function by default. Override it with your own
+	 * initialization logic.
+	 */
+	initialize: function(){},
+	
+	/**
+	 * The JSON representation of a Collection is an array of the
+	 * models' attributes.
+	 */
+	toJSON: function() 
+	{
+		return this;
+	},
+	
+	/**
+	 * Add a model to the end of the collection.
+	 */
+	push: function(model)
+	{
+		this.length = this._models.push.apply(this._models, arguments);
+		this._handleChange(_.toArray(arguments));
+		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+		
+		return this.length;
+	},
+	
+	/**
+	 * Remove a model from the end of the collection.
+	 */
+	pop: function(options)
+	{
+		if (!this.length) return;
+		
+		var model = this._models.pop();
+		
+		this._handleChange(model, false);
+		this.length = this._models.length;
+		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
+		
+		return model;
+	},
+	
+	/**
+	 * Add a model to the beginning of the collection.
+	 */
+	unshift: function(model) 
+	{
+		this.length = this._models.unshift.apply(this._models, arguments);
+		this._handleChange(_.toArray(arguments));
+		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+		
+		return this.length;
+	},
+	
+	/**
+	 * Remove a model from the beginning of the collection.
+	 */
+	shift: function()
+	{
+		if (!this.length) return;
+		
+		var model;
+		
+		this._handleChange(model = this._models.shift(), false);
+		this.length = this._models.length;
+		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
+		
+		return model;
+	},
+	
+	/**
+	 * Slice out a sub-array of models from the collection.
+	 */
+	slice: function(begin, length)
+	{
+		return this._models.slice(begin, length);
+	},
+	
+	/**
+	 * Splice out a sub-array of models from the collection.
+	 */
+	splice: function(begin, length)
+	{
+		var inserts = _.rest(arguments,2).length;
+		
+		var models = this._models.splice(begin, length, inserts);
+		this.length = this._models.length;
+		
+		if (models.length) this.trigger(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
+		if (inserts.length) this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+		
+		return models;
+	},
+	
+	/**
+	 * Get the item at the given index; similar to array[index]
+	 */
+	get: function(index) 
+	{
+		return this._models[index];
+	},
+	
+	/**
+	 * Add (or replace) item at given index with the one specified,
+	 * similar to array[index] = value;
+	 */
+	set: function(index, model)
+	{
+		var replaced = this._models[index];
+		this._handleChange(replaced, false);
+		
+		this._models[index] = model
+		this._handleChange(model);
+		
+		if (this._models.length > this.length)
+		{
+			this.length = this._models.length;
+			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+		}
+		
+		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.CHANGE, {model:model}));
+		
+		return replaced;
+	},
+	
+	/**
+	 * @see	get
+	 */
+	at: function(index) 
+	{
+		return this.get(index);
+	},
+	
+	/**
+	 * Force the collection to re-sort itself. You don't need to call this under
+	 * normal circumstances, as the set will maintain sort order as each item
+	 * is added.
+	 */
+	sort: function(compareFunction) 
+	{
+		this._models.sort(compareFunction);
+		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.SORT));
+		
+		return this;
+	},
+	
+	/**
+	 * Create a new collection with an identical list of models as this one.
+	 */
+	clone: function() 
+	{
+		return new this.constructor(this._models);
+	},
+
+	toString: function()
+	{
+		return 'conbo.List';
+	},
+	
+	/**
+	 * Listen to the events of Bindable values so we can detect changes
+	 * @param 	{any}		models
+	 * @param 	{Boolean}	enabled
+	 */
+	_handleChange: function(models, enabled)
+	{
+		var method = enabled === false ? 'off' : 'on'
+		
+		models = (_.isArray(models) ? models : [models]).slice();
+		
+		while (models.length)
+		{
+			var model = models.pop();
+			
+			if (model instanceof conbo.Bindable)
+			{
+				model[method](conbo.ConboEvent.CHANGE, this._redispatch);
+			}
+		}
+	},
+	
+	/**
+	 * Passthrough event to bubble events dispatched by Bindable array elements 
+	 */
+	_redispatch: function(event)
+	{
+		this.trigger(event);
+	}
+});
+
+// Underscore methods that we want to implement on the List.
+var methods = 
+[
+	'forEach', 'each', 'map', 'collect', 'reduce', 'foldl',
+	'inject', 'reduceRight', 'foldr', 'find', 'detect', 'filter', 'select',
+	'reject', 'every', 'all', 'some', 'any', 'include', 'contains', 'invoke',
+	'max', 'min', 'toArray', 'size', 'first', 'head', 'take', 'initial', 'rest',
+	'tail', 'drop', 'last', 'without', 'indexOf', 'shuffle', 'lastIndexOf',
+	'isEmpty', 'chain'
+];
+
+// Mix in each available Underscore/Lo-Dash method as a proxy to `Collection#models`.
+_.each(methods, function(method) 
+{
+	if (!(method in _)) return;
+	
+	conbo.List.prototype[method] = function() 
+	{
+		var args = [].slice.call(arguments);
+		args.unshift(this._models);
+		return _[method].apply(_, args);
+	};
+});
+
+// Underscore methods that take a property name as an argument.
+var attributeMethods = ['groupBy', 'countBy', 'sortBy'];
+
+// Use attributes instead of properties.
+_.each(attributeMethods, function(method)
+{
+	if (!(method in _)) return;
+	
+	conbo.List.prototype[method] = function(value, context) 
+	{
+		var iterator = _.isFunction(value) ? value : function(model) 
+		{
+			return model.get(value);
+		};
+		
+		return _[method](this._models, iterator, context);
+	};
+});
+
+/**
  * Attribute Bindings
  * 
  * Functions that can be used to bind DOM elements to properties of Bindable 
@@ -1008,17 +1274,17 @@ _.each(hashMethods, function(method)
  * @example		<div cb-hide="property">Hello!</div>
  * @author 		Neil Rackett
  */
-conbo.AttributeBindings = conbo.Class.extend({},
-{
+conbo.AttributeBindings = conbo.Class.extend
+({
 	/**
 	 * Makes an element visible
 	 * 
 	 * @param value
 	 * @param el
 	 */
-	show: function(value, el)
+	cbShow: function(value, el)
 	{
-		this.hide(!value, el);
+		this.cbHide(!value, el);
 	},
 	
 	/**
@@ -1028,7 +1294,7 @@ conbo.AttributeBindings = conbo.Class.extend({},
 	 * @param value
 	 * @param el
 	 */
-	hide: function(value, el)
+	cbHide: function(value, el)
 	{
 		var $el = $(el);
 		
@@ -1043,9 +1309,9 @@ conbo.AttributeBindings = conbo.Class.extend({},
 	 * @param value
 	 * @param el
 	 */
-	include: function(value, el)
+	cbInclude: function(value, el)
 	{
-		this.exclude(!value, el);
+		this.cbExclude(!value, el);
 	},
 	
 	/**
@@ -1055,7 +1321,7 @@ conbo.AttributeBindings = conbo.Class.extend({},
 	 * @param value
 	 * @param el
 	 */
-	exclude: function(value, el)
+	cbExclude: function(value, el)
 	{
 		var $el = $(el);
 		
@@ -1070,7 +1336,7 @@ conbo.AttributeBindings = conbo.Class.extend({},
 	 * @param value
 	 * @param el
 	 */
-	html: function(value, el)
+	cbHtml: function(value, el)
 	{
 		$(el).html(value);
 	},
@@ -1083,7 +1349,7 @@ conbo.AttributeBindings = conbo.Class.extend({},
 	 * @param value
 	 * @param el
 	 */
-	text: function(value, el)
+	cbText: function(value, el)
 	{
 		if (!value) value = '';
 		
@@ -1093,6 +1359,117 @@ conbo.AttributeBindings = conbo.Class.extend({},
 		textArea.innerHTML = value;
 		
 		$(el).html(textArea.innerHTML);
+	},
+	
+	/**
+	 * Applies or removes a CSS class to or from the element based on the value
+	 * of the bound property, e.g. cb-css-my-class="myValue" will apply the 
+	 * "my-class" CSS class to the element when "myValue" equates to true.
+	 * 
+	 * @param value
+	 * @param el
+	 */
+	cbClass: function(value, el, options, className)
+	{
+		if (!className)
+		{
+			throw new Error('cb-class attributes must specify one or more CSS classes in the format cb-class="myProperty;class-name"');
+		}
+		
+		var $el = $(el);
+		
+		!!value
+			? $el.addClass(className)
+			: $el.removeClass(className);
+	},
+	
+	/**
+	 * Repeat the selected element
+	 * 
+	 * @param value
+	 * @param el
+	 */
+	cbRepeat: function(values, el, options, itemRendererClassName)
+	{
+		var a, 
+			args = _.toArray(arguments),
+			$el = $(el),
+			viewClass;
+		
+		if (options && options.context && options.context.app)
+		{
+			viewClass = options.context.app.getClass(itemRendererClassName);
+		}
+		
+		viewClass || (viewClass = conbo.View);
+		el.cbData || (el.cbData = {});
+		
+		elements = el.cbData.elements || [];
+		
+		$el.removeClass('cb-exclude');
+		
+		if (el.cbData.list != values && values instanceof conbo.List)
+		{
+			if (!!el.cbData.list)
+			{
+				el.cbData.list.off('add remove change', el.cbData.changeHandler);
+			}
+			
+			el.cbData.changeHandler = this.proxy(function(event)
+			{
+				this.cbRepeat.apply(this, args);
+			});
+			
+			values.on('add remove change', el.cbData.changeHandler);
+			el.cbData.list = values;
+		}
+		
+		switch (true)
+		{
+			case values instanceof Array:
+				a = values;
+				break;
+				
+			case values instanceof conbo.List:
+				a = values.toArray();
+				break;
+				
+			default:
+				a = [];
+				break;
+		}
+		
+		if (!!elements.length)
+		{
+			$(elements[0]).before($el);
+		}
+		
+		while (elements.length)
+		{
+			$(elements.pop()).remove();
+		}
+		
+		a.forEach(function(value)
+		{
+			if (!(value instanceof conbo.Hash))
+			{
+				value = new conbo.Hash(value);
+			}
+			
+			var $clone = $el.clone().removeAttr('cb-repeat'),
+				view = new viewClass(_.extend({model:value, el:$clone}, options));
+			
+			view.$el.addClass('cb-repeat');
+			
+			elements.push(view.el);
+		});
+		
+		$el.after(elements);
+		el.cbData.elements = elements;
+		
+		!!elements.length
+			? $el.remove()
+			: $el.addClass('cb-exclude');
 	}
 	
 });
@@ -1106,6 +1483,8 @@ conbo.AttributeBindings = conbo.Class.extend({},
  */
 conbo.BindingUtils = conbo.Class.extend({},
 {
+	_attrBindings: new conbo.AttributeBindings(),
+	
 	/**
 	 * Bind a property of a Bindable class instance (e.g. Hash or Model) 
 	 * to a DOM element's value/content, using Conbo's best judgement to
@@ -1119,8 +1498,6 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 * @param 		{DOMElement} 		element				DOM element to bind value to (two-way bind on input/form elements)
 	 * @param 		{Function}			parseFunction		Optional method used to parse values before outputting as HTML
 	 * 
-	 * @deprecated						Use bindAttribute
-	 * @see								bindAttribute
 	 * @returns		{Array}									Array of bindings
 	 */
 	bindElement: function(source, propertyName, element, parseFunction)
@@ -1270,11 +1647,12 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 * @param 	{String}			propertyName	Property name to bind
 	 * @param 	{DOMElement}		element			DOM element to bind value to (two-way bind on input/form elements)
 	 * @param 	{String}			attributeName	The cb-* property to bind against in camelCase, e.g. "propName" for "cb-prop-name"
-	 * @param 	{Function} 			parseFunction	Optional method used to parse values before outputting as HTML
+	 * @param 	{Function} 			parseFunction	Method used to parse values before outputting as HTML (optional)
+	 * @param	{Object}			options			Options related to this attribute binding (optional)
 	 * 
 	 * @returns	{Array}								Array of bindings
 	 */
-	bindAttribute: function(source, propertyName, element, attributeName, parseFunction)
+	bindAttribute: function(source, propertyName, element, attributeName, parseFunction, options)
 	{
 		if (this._isReservedAttribute(attributeName))
 		{
@@ -1291,26 +1669,28 @@ conbo.BindingUtils = conbo.Class.extend({},
 			return this.bindElement(source, propertyName, element, parseFunction);
 		}
 		
-		var bindings = [],
+		var scope = this,
+			bindings = [],
 			isConbo = false,
 			isNative = false,
 			eventType,
-			eventHandler;
-		
-		var split = attributeName.replace(/([A-Z])/g, ' $1').toLowerCase().split(' ');
+			eventHandler,
+			args = _.toArray(arguments).slice(5),
+			camelCase = conbo.toCamelCase('cb-'+attributeName),
+			split = attributeName.split('-');
 		
 		switch (true)
 		{
 			case split[0] == 'attr':
 			{
-				attributeName = attributeName.substr(4);
+				attributeName = attributeName.substr(5);
 				isNative = attributeName in element;
 				break;
 			}
 			
 			default:
 			{
-				isConbo = attributeName in conbo.AttributeBindings;
+				isConbo = camelCase in this._attrBindings;
 				isNative = !isConbo && attributeName in element;
 			}
 		}
@@ -1327,9 +1707,13 @@ conbo.BindingUtils = conbo.Class.extend({},
 					throw new Error('Source is not Bindable');
 				}
 				
-				eventHandler = function()
+				eventHandler = function(event)
 				{
-					conbo.AttributeBindings[attributeName](parseFunction(source.get(propertyName)), element);
+					scope._attrBindings[camelCase].apply
+					(
+						scope._attrBindings, 
+						[parseFunction(source.get(propertyName)), element].concat(args)
+					);
 				}
 				
 				eventType = 'change:'+propertyName;
@@ -1434,17 +1818,22 @@ conbo.BindingUtils = conbo.Class.extend({},
 			this.unbindView(view);
 		}
 		
-		var bindings = [],
-			nestedViews = view.$('.cb-view, [cb-view], .cb-app, [cb-app]'),
+		var options = view.context.addTo({view:view}),
+			bindings = [],
+			$nestedViews = view.$('.cb-view, [cb-view], .cb-app, [cb-app]'),
+			$ignored = view.$('[cb-repeat]'),
 			scope = this;
 		
-		view.$('*').add(view.$el).filter(function()
+		view.$('*').add(view.el).filter(function()
 		{
-			return !nestedViews.find(this).length;
+			if (this == view.el) return true;
+			if (!!$nestedViews.find(this).length || !!$nestedViews.filter(this).length) return false;
+			if (!!$ignored.find(this).length) return false;
+			return true;
 		})
 		.each(function(index, el)
 		{
-			var cbData = $(el).cbData();
+			var cbData = $(el).cbAttrs(false);
 			
 			if (!cbData) 
 			{
@@ -1462,7 +1851,8 @@ conbo.BindingUtils = conbo.Class.extend({},
 				
 				var d = cbData[key],
 					b = d.split('|'),
-					s = scope.cleanPropertyName(b[0]).split('.'),
+					params = b[0].split(';'),
+					s = scope.cleanPropertyName(params.shift()).split('.'),
 					p = s.pop(),
 					m,
 					f;
@@ -1483,7 +1873,9 @@ conbo.BindingUtils = conbo.Class.extend({},
 				if (!m) throw new Error(b[0]+' is not defined in this View');
 				if (!p) throw new Error('Unable to bind to undefined property: '+p);
 				
-				bindings = bindings.concat(scope.bindAttribute(m, p, el, key, f));
+				var args = [m, p, el, key, f, options].concat(params);
+
+				bindings = bindings.concat(scope.bindAttribute.apply(scope, args));
 			});
 		});
 		
@@ -1515,20 +1907,27 @@ conbo.BindingUtils = conbo.Class.extend({},
 		{
 			var binding = bindings.pop();
 			
-			switch (true)
+			try
 			{
-				case binding[0] instanceof $:
-				case binding[0] instanceof conbo.EventDispatcher:
+				switch (true)
 				{
-					binding[0].off(binding[1], binding[2]);
-					break;
+					case binding[0] instanceof $:
+					case binding[0] instanceof conbo.EventDispatcher:
+					{
+						binding[0].off(binding[1], binding[2]);
+						break;
+					}
+					
+					default:
+					{
+						binding[0].removeEventListener(binding[1], binding[2]);
+						break;
+					}
 				}
-				
-				default:
-				{
-					binding[0].removeEventListener(binding[1], binding[2]);
-					break;
-				}
+			}
+			catch (e) 
+			{
+				// TODO ?
 			}
 		}
 		
@@ -1623,7 +2022,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 */
 	cleanPropertyName: function(value)
 	{
-		return (value || '').replace(/[^\w\.]/g, '');
+		return (value || '').replace(/[^\w\._]/g, '');
 	},
 	
 	toString: function()
@@ -1651,6 +2050,18 @@ conbo.BindingUtils = conbo.Class.extend({},
 	
 });
 
+/**
+ * isClass utility method
+ */
+conbo.isClass = function(value)
+{
+	return !!value && value.prototype instanceof conbo.Class;
+};
+
+conbo.toCamelCase = function(string)
+{
+	return (string || '').replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
+}
 /**
  * View
  * 
@@ -2024,7 +2435,7 @@ conbo.Application = conbo.View.extend
 		options = _.clone(options) || {};
 		
 		this.prefix = options.prefix || _.result(this, 'prefix') || '';
-		this.namespace = options.namespace || _.result(this, 'namespace');
+		this.namespace = options.namespace || _.result(this, 'namespace') || '';
 		
 		options.app = this;
 		options.context = new this.contextClass(options);
@@ -2036,32 +2447,44 @@ conbo.Application = conbo.View.extend
 	},
 	
 	/**
-	 * Apply View classes to DOM elements based on their cb-view attribute
+	 * Apply View classes child DOM elements based on their cb-view attribute
 	 */
 	applyViews: function()
 	{
-		var selector = !!this.prefix
-			? '[cb-view^="'+this._addPrefix()+'"]'
-			: '[cb-view]';
+		var selector = '[cb-view]';
 		
-		this.$(selector).each(this.proxy(function(index, el)
+		this.$(selector).not('.cb-view').each(this.proxy(function(index, el)
 		{
-			var view = this.$(el).cbData().view.replace(this._addPrefix(), '');
+			var view = this.$(el).cbAttrs().view,
+				viewClass;
 			
-			var viewClass = !!this.namespace
-				? this.namespace[view]
-				: eval(view);
-			
-			if (!_.isFunction(viewClass)) 
+			if (viewClass = this.getClass(view))
 			{
-				return;
+				new viewClass(this.context.addTo({el:el}));
 			}
-			
-			new viewClass(this.context.addTo({el:el}));
 			
 		}));
 		
 		return this;
+	},
+	
+	/**
+	 * Attempt to convert string into a conbo.Class
+	 * @param name
+	 * @returns
+	 */
+	getClass: function(name)
+	{
+		if (!name) return;
+		
+		var viewClass = !!this.namespace
+			? this.namespace[name]
+			: eval(name);
+		
+		if (conbo.isClass(viewClass)) 
+		{
+			return viewClass;
+		}		
 	},
 	
 	toString: function()
@@ -2114,10 +2537,10 @@ conbo.Application = conbo.View.extend
 	 */
 	_addPrefix: function(name)
 	{
-		name = name || '';
+		name || (name = '');
 		return !!this.prefix ? this.prefix+'.'+name : name;
 	}
-	
+
 });
 
 /**
@@ -2776,13 +3199,13 @@ var wrapError = function (model, options)
  * 
  * Derived from the Backbone.js class of the same name
  */
-conbo.Collection = conbo.EventDispatcher.extend
+conbo.Collection = conbo.List.extend
 ({
 	/**
-	 * The default model for a collection is just a conbo.Model.
+	 * The default model class for a collection is conbo.Model.
 	 * This should be overridden in most cases.
 	 */
-	model: conbo.Model,
+	modelClass: conbo.Model,
 	
 	/**
 	 * Constructor: DO NOT override! (Use initialize instead)
@@ -2793,8 +3216,13 @@ conbo.Collection = conbo.EventDispatcher.extend
 		options || (options = {});
 		
 		if (options.url) this.url = options.url;
-		if (options.model) this.model = options.model;
 		if (options.comparator !== undefined) this.comparator = options.comparator;
+		
+		// options.model and this.model are deprecated, but included for backward compatibility
+		if (options.modelClass || options.model || this.model)
+		{
+			this.modelClass = options.modelClass || options.model || this.model;
+		}
 		
 		this._reset();
 		this._inject(options);
@@ -2835,7 +3263,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 	 */
 	add: function(models, options)
 	{
-		return this.set(models, _.defaults(options || {}, {add: true, merge: false, remove: false}));
+		return this.set(models, _.defaults(options || {}, {add:true, merge:false, remove:false}));
 	},
 
 	/**
@@ -2862,7 +3290,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 			
 			index = this.indexOf(model);
 			
-			this.models.splice(index, 1);
+			this._models.splice(index, 1);
 			this.length--;
 			
 			if (!options.silent) 
@@ -2947,7 +3375,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 		{
 			for (i = 0, l = this.length; i < l; ++i) 
 			{
-				if (!modelMap[(model = this.models[i]).cid]) toRemove.push(model);
+				if (!modelMap[(model = this._models[i]).cid]) toRemove.push(model);
 			}
 			
 			if (toRemove.length) 
@@ -2965,11 +3393,11 @@ conbo.Collection = conbo.EventDispatcher.extend
 			
 			if (at != null) 
 			{
-				[].splice.apply(this.models, [at, 0].concat(toAdd));
+				[].splice.apply(this._models, [at, 0].concat(toAdd));
 			}
 			else 
 			{
-				[].push.apply(this.models, toAdd);
+				[].push.apply(this._models, toAdd);
 			}
 		}
 		
@@ -3013,12 +3441,12 @@ conbo.Collection = conbo.EventDispatcher.extend
 	{
 		options || (options = {});
 		
-		for (var i = 0, l = this.models.length; i < l; i++) 
+		for (var i = 0, l = this._models.length; i < l; i++) 
 		{
-			this._removeReference(this.models[i]);
+			this._removeReference(this._models[i]);
 		}
 		
-		options.previousModels = this.models;
+		options.previousModels = this._models;
 		
 		this._reset();
 		this.add(models, _.extend({silent: true}, options));
@@ -3080,7 +3508,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 	 */
 	slice: function(begin, end) 
 	{
-		return this.models.slice(begin, end);
+		return this._models.slice(begin, end);
 	},
 
 	/**
@@ -3089,7 +3517,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 	get: function(obj) 
 	{
 		if (obj == null) return undefined;
-		this._idAttr || (this._idAttr = this.model.prototype.idAttribute);
+		this._idAttr || (this._idAttr = this.modelClass.prototype.idAttribute);
 		return this._byId[obj.id || obj.cid || obj[this._idAttr] || obj];
 	},
 
@@ -3098,7 +3526,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 	 */
 	at: function(index) 
 	{
-		return this.models[index];
+		return this._models[index];
 	},
 
 	/**
@@ -3141,11 +3569,11 @@ conbo.Collection = conbo.EventDispatcher.extend
 		// Run sort based on type of `comparator`.
 		if (_.isString(this.comparator) || this.comparator.length === 1) 
 		{
-			this.models = this.sortBy(this.comparator, this);
+			this._models = this.sortBy(this.comparator, this);
 		}
 		else 
 		{
-			this.models.sort(_.bind(this.comparator, this));
+			this._models.sort(_.bind(this.comparator, this));
 		}
 
 		if (!options.silent) 
@@ -3173,7 +3601,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 			return model.get(value);
 		};
 		
-		return _.sortedIndex(this.models, model, iterator, context);
+		return _.sortedIndex(this._models, model, iterator, context);
 	},
 
 	/**
@@ -3181,7 +3609,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 	 */
 	pluck: function(attr)
 	{
-		return _.invoke(this.models, 'get', attr);
+		return _.invoke(this._models, 'get', attr);
 	},
 
 	/**
@@ -3262,9 +3690,16 @@ conbo.Collection = conbo.EventDispatcher.extend
 	 */
 	clone: function() 
 	{
-		return new this.constructor(this.models);
+		return new this.constructor(this._models);
 	},
-
+	
+	// List methods that aren't available on Collection
+	
+	splice: function()
+	{
+		throw new Error('splice is not available on conbo.Collection');
+	},
+	
 	/**
 	 * Private method to reset all internal state. Called when the collection
 	 * is first initialized or reset.
@@ -3272,7 +3707,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 	_reset: function() 
 	{
 		this.length = 0;
-		this.models = [];
+		this._models = [];
 		this._byId	= {};
 	},
 	
@@ -3291,7 +3726,7 @@ conbo.Collection = conbo.EventDispatcher.extend
 		options || (options = {});
 		options.collection = this;
 		
-		var model = new this.model(attrs, options);
+		var model = new this.modelClass(attrs, options);
 		
 		if (!model._validate(attrs, options)) 
 		{
@@ -3356,49 +3791,6 @@ conbo.Collection = conbo.EventDispatcher.extend
 	{
 		return 'conbo.Collection';
 	}
-});
-
-// Underscore methods that we want to implement on the Collection.
-var methods = 
-[
-	'forEach', 'each', 'map', 'collect', 'reduce', 'foldl',
-	'inject', 'reduceRight', 'foldr', 'find', 'detect', 'filter', 'select',
-	'reject', 'every', 'all', 'some', 'any', 'include', 'contains', 'invoke',
-	'max', 'min', 'toArray', 'size', 'first', 'head', 'take', 'initial', 'rest',
-	'tail', 'drop', 'last', 'without', 'indexOf', 'shuffle', 'lastIndexOf',
-	'isEmpty', 'chain'
-];
-
-// Mix in each available Underscore/Lo-Dash method as a proxy to `Collection#models`.
-_.each(methods, function(method) 
-{
-	if (!(method in _)) return;
-	
-	conbo.Collection.prototype[method] = function() 
-	{
-		var args = [].slice.call(arguments);
-		args.unshift(this.models);
-		return _[method].apply(_, args);
-	};
-});
-
-// Underscore methods that take a property name as an argument.
-var attributeMethods = ['groupBy', 'countBy', 'sortBy'];
-
-// Use attributes instead of properties.
-_.each(attributeMethods, function(method)
-{
-	if (!(method in _)) return;
-	
-	conbo.Collection.prototype[method] = function(value, context) 
-	{
-		var iterator = _.isFunction(value) ? value : function(model) 
-		{
-			return model.get(value);
-		};
-		
-		return _[method](this.models, iterator, context);
-	};
 });
 
 // Cached regex for stripping a leading hash/slash and trailing space.
