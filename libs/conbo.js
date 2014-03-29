@@ -1276,6 +1276,25 @@ _.each(attributeMethods, function(method)
  */
 conbo.AttributeBindings = conbo.Class.extend
 ({
+	initialize: function()
+	{
+		this.cbClass.multiple = true;
+	},
+	
+	/**
+	 * Can the given attribute be bound to multiple properties at the same time?
+	 * @param 	{String}	attribute
+	 * @returns {Boolean}
+	 */
+	canHandleMultiple: function(attribute)
+	{
+		var f = conbo.toCamelCase(attribute);
+		
+		return (f in this)
+			? !!this[f].multiple
+			: false;
+	},
+	
 	/**
 	 * Makes an element visible
 	 * 
@@ -1852,7 +1871,12 @@ conbo.BindingUtils = conbo.Class.extend({},
 				var a, i, f,
 					d = cbData[key],
 					b = d.split('|'),
-					splits = scope._splitAttribute(b[0]);
+					splits = scope._splitAttribute('cb-'+key, b[0]);
+				
+				if (!splits)
+				{
+					throw new Error('cb-'+key+' attribute cannot be empty');
+				}
 				
 				try
 				{
@@ -1874,7 +1898,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 					}
 					catch (e) {}
 					
-					if (!model) throw new Error(b[0]+' is not defined in this View');
+					if (!model) throw new Error(a+' is not defined in this View');
 					if (!property) throw new Error('Unable to bind to undefined property: '+property);
 					
 					var args = [model, property, el, key, f, options, param];
@@ -2066,13 +2090,22 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 * @private
 	 * @param value
 	 */
-	_splitAttribute: function(value)
+	_splitAttribute: function(attribute, value)
 	{
-		var a = (value || '').split(','),
-			o = {},
-			i, c;
+		if (!_.isString(value))
+		{
+			return;
+		}
 		
-		for (i=0, c=a.length; i<c; ++i)
+		var a = value.split(','),
+			o = {},
+			i;
+		
+		var c = this._attrBindings.canHandleMultiple(attribute)
+			? a.length
+			: 1;
+		
+		for (i=0; i<c; ++i)
 		{
 			s = a[i].split(':');
 			o[s[0]] = s[1];
