@@ -51,21 +51,21 @@
 		</footer>
 		
 		<script type="text/template" id="item-template">
-			<div class="view" cb-class="model.completed:completed">
+			<div class="view" cb-class="data.completed:completed">
 				<!--
 				Using cb-bind with input elements will automatically create a 2-way binding between 
 				the bound property and DOM element: change one, the other changes automatically
 				-->
-				<input class="toggle" type="checkbox" cb-bind="model.completed" cb-onclick="toggleCompleted">
-				<label cb-html="model.title" cb-ondblclick="edit"></label>
+				<input class="toggle" type="checkbox" cb-bind="data.completed" cb-onclick="toggleCompleted">
+				<label cb-html="data.title" cb-ondblclick="edit"></label>
 				<button class="destroy" cb-onclick="clear"></button>
 			</div>
-			<input class="edit" cb-bind="model.title" cb-onkeypress="updateOnEnter" cb-onkeydown="revertOnEscape" cb-onblur="close">
+			<input class="edit" cb-bind="data.title" cb-onkeypress="updateOnEnter" cb-onkeydown="revertOnEscape" cb-onblur="close">
 		</script>
 		
 		<script src="libs/jquery.js"></script>
 		<script src="libs/lodash.js"></script>
-		<script src="libs/conbo.js"></script>
+		<script src="libs/conbo-complete.js"></script>
 		<script src="libs/conbo-localstorage.js"></script>
 		
 		<script src="js/todo-example.js"></script>

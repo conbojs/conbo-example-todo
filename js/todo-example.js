@@ -144,11 +144,11 @@
 		 */
 		initialize: function () 
 		{
-			this.proxyAll();
+			this.bindAll();
 			
-			this.model.on('change', this.render, this);
-			this.model.on('destroy', this.remove, this);
-			this.model.on('visible', this.toggleVisible, this);
+			this.data.addEventListener('change', this.render, this);
+			this.data.addEventListener('destroy', this.remove, this);
+			this.data.addEventListener('visible', this.toggleVisible, this);
 		},
 		
 		/**
@@ -169,7 +169,7 @@
 		
 		isHidden: function () 
 		{
-			var isCompleted = this.model.get('completed');
+			var isCompleted = this.data.get('completed');
 			
 			return (// hidden cases only
 				(!isCompleted && this.filterModel.get('filter') === 'completed') ||
@@ -182,7 +182,7 @@
 		 */
 		toggleCompleted: function ()
 		{
-			this.model.toggle();
+			this.data.toggle();
 		},
 		
 		/**
@@ -215,7 +215,7 @@
 			
 			if (trimmedValue) 
 			{
-				this.model.save({title:trimmedValue});
+				this.data.save({title:trimmedValue});
 			} 
 			else 
 			{
@@ -253,7 +253,7 @@
 		 */
 		clear: function () 
 		{
-			this.model.destroy();
+			this.data.destroy();
 		}
 	});
 
@@ -302,22 +302,22 @@
 		 */
 		initialize: function () 
 		{
-			this.proxyAll();
+			this.bindAll();
 			
 			this.$input = this.$('#new-todo');
 			this.$list = $('#todo-list');
 			
-			this.todoCollection.on('add', this.todoCollection_add, this);
-			this.todoCollection.on('reset', this.todoCollection_reset, this);
-			this.todoCollection.on('change:completed', this.todoCollection_changeCompleted, this);
-			this.todoCollection.on('all', this.render, this);
+			this.todoCollection.addEventListener('add', this.todoCollection_add, this);
+			this.todoCollection.addEventListener('reset', this.todoCollection_reset, this);
+			this.todoCollection.addEventListener('change:completed', this.todoCollection_changeCompleted, this);
+			this.todoCollection.addEventListener('all', this.render, this);
 			
 			// Suppresses 'add' events with {reset: true} and prevents the app view
 			// from being re-rendered for every model. Only renders when the 'reset'
 			// event is triggered at the end of the fetch.
 			this.todoCollection.fetch({reset: true});
 			
-			this.filterModel.on('change:filter', this.filterModel_change, this);
+			this.filterModel.addEventListener('change:filter', this.filterModel_change, this);
 		},
 		
 		/**
@@ -375,9 +375,9 @@
 		 * Add a single todo item to the list by creating a view for it, and
 		 * appending its element to the `<ul>`.
 		 */
-		addOne: function (todo) 
+		addOne: function(todo) 
 		{
-			var view = new app.TodoItemView(this.context.addTo({model: todo}));			
+			var view = new app.TodoItemView(this.context.addTo({data:todo}));			
 			this.$list.append(view.el);
 		},
 		
@@ -392,7 +392,7 @@
 		
 		filterOne: function (todo) 
 		{
-			todo.trigger('visible');
+			todo.dispatchEvent(new conbo.Event('visible'));
 		},
 		
 		filterModel_change: function(event)

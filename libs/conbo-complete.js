@@ -15,7 +15,10 @@
  * pattern and an event model which enables callback scoping and consistent 
  * event handling
  * 
- * Dependencies: jQuery 1.7+, Lo-Dash or Underscore.js 1.4+
+ * Dependencies
+ *
+ * Lite: None
+ * Core and Complete: jQuery 1.7+
  * 
  * @author		Neil Rackett
  * @see			http://www.mesmotronic.com/
@@ -23,13 +26,11 @@
 
 (function(window, document, undefined)
 {
-	var create = function(_, $)
+	var create = function($)
 	{
 		var conbo = 
 		{
-			VERSION:'1.3.2',
-			_:_, 
-			$:$,
+			VERSION:'2.0.0',
 			
 			toString: function() 
 			{ 
@@ -37,32 +38,1497 @@
 			}
 		};
 		
-
+		if (!!$)
+		{
+			conbo.$ = $;
+		}
+		
 /*
- * Polyfills for native JavaScript methods that are missing from
- * older browsers (yes, IE, I'm looking at you!)
- * 
- * We're only include the minimum possible number here as we don't want 
- * to end up bloated with stuff most people will never use
- * 
- * @author		Neil Rackett
+ * Utility methods
+ * A modified subset of Underscore.js methods, plus loads of our own
  */
 
-if (!Array.prototype.indexOf) 
+var _ = {};
+
+(function() 
 {
-	Array.prototype.indexOf = function(value, fromIndex)
-	{
-		return _.indexOf(this, value, fromIndex); 
+	// Establish the object that gets returned to break out of a loop iteration.
+	var breaker = {};
+
+	// Save bytes in the minified (but not gzipped) version:
+	var
+		ArrayProto = Array.prototype, 
+		ObjProto = Object.prototype, 
+		FuncProto = Function.prototype;
+
+	// Create quick reference variables for speed access to core prototypes.
+	var
+		push			= ArrayProto.push,
+		slice			= ArrayProto.slice,
+		concat			= ArrayProto.concat,
+		toString		= ObjProto.toString,
+		hasOwnProperty	= ObjProto.hasOwnProperty;
+
+	// All **ECMAScript 5** native function implementations that we hope to use
+	// are declared here.
+	var
+		nativeForEach		= ArrayProto.forEach,
+		nativeMap			= ArrayProto.map,
+		nativeReduce		= ArrayProto.reduce,
+		nativeReduceRight	= ArrayProto.reduceRight,
+		nativeFilter		= ArrayProto.filter,
+		nativeEvery			= ArrayProto.every,
+		nativeSome			= ArrayProto.some,
+		nativeIndexOf		= ArrayProto.indexOf,
+		nativeLastIndexOf	= ArrayProto.lastIndexOf,
+		nativeIsArray		= Array.isArray,
+		nativeKeys			= Object.keys,
+		nativeBind			= FuncProto.bind;
+
+	// Collection Functions
+	// --------------------
+
+	// The cornerstone, an `each` implementation, aka `forEach`.
+	// Handles objects with the built-in `forEach`, arrays, and raw objects.
+	// Delegates to **ECMAScript 5**'s native `forEach` if available.
+	var each = _.each = function(obj, iterator, context) {
+		if (obj == null) return obj;
+		if (nativeForEach && obj.forEach === nativeForEach) {
+			obj.forEach(iterator, context);
+		} else if (obj.length === +obj.length) {
+			for (var i = 0, length = obj.length; i < length; i++) {
+				if (iterator.call(context, obj[i], i, obj) === breaker) return;
+			}
+		} else {
+			var keys = _.keys(obj);
+			for (var i = 0, length = keys.length; i < length; i++) {
+				if (iterator.call(context, obj[keys[i]], keys[i], obj) === breaker) return;
+			}
+		}
+		return obj;
 	};
+
+	// Return the results of applying the iterator to each element.
+	// Delegates to **ECMAScript 5**'s native `map` if available.
+	_.map = function(obj, iterator, context) {
+		var results = [];
+		if (obj == null) return results;
+		if (nativeMap && obj.map === nativeMap) return obj.map(iterator, context);
+		each(obj, function(value, index, list) {
+			results.push(iterator.call(context, value, index, list));
+		});
+		return results;
+	};
+
+	var reduceError = 'Reduce of empty array with no initial value';
+
+	// **Reduce** builds up a single result from a list of values, aka `inject`,
+	// or `foldl`. Delegates to **ECMAScript 5**'s native `reduce` if available.
+//	_.reduce = _.foldl = _.inject = function(obj, iterator, memo, context) {
+//		var initial = arguments.length > 2;
+//		if (obj == null) obj = [];
+//		if (nativeReduce && obj.reduce === nativeReduce) {
+//			if (context) iterator = _.bind(iterator, context);
+//			return initial ? obj.reduce(iterator, memo) : obj.reduce(iterator);
+//		}
+//		each(obj, function(value, index, list) {
+//			if (!initial) {
+//				memo = value;
+//				initial = true;
+//			} else {
+//				memo = iterator.call(context, memo, value, index, list);
+//			}
+//		});
+//		if (!initial) throw new TypeError(reduceError);
+//		return memo;
+//	};
+
+	// The right-associative version of reduce, also known as `foldr`.
+	// Delegates to **ECMAScript 5**'s native `reduceRight` if available.
+//	_.reduceRight = _.foldr = function(obj, iterator, memo, context) {
+//		var initial = arguments.length > 2;
+//		if (obj == null) obj = [];
+//		if (nativeReduceRight && obj.reduceRight === nativeReduceRight) {
+//			if (context) iterator = _.bind(iterator, context);
+//			return initial ? obj.reduceRight(iterator, memo) : obj.reduceRight(iterator);
+//		}
+//		var length = obj.length;
+//		if (length !== +length) {
+//			var keys = _.keys(obj);
+//			length = keys.length;
+//		}
+//		each(obj, function(value, index, list) {
+//			index = keys ? keys[--length] : --length;
+//			if (!initial) {
+//				memo = obj[index];
+//				initial = true;
+//			} else {
+//				memo = iterator.call(context, memo, obj[index], index, list);
+//			}
+//		});
+//		if (!initial) throw new TypeError(reduceError);
+//		return memo;
+//	};
+
+	// Return the first value which passes a truth test. Aliased as `detect`.
+	_.find = function(obj, predicate, context) {
+		var result;
+		any(obj, function(value, index, list) {
+			if (predicate.call(context, value, index, list)) {
+				result = value;
+				return true;
+			}
+		});
+		return result;
+	};
+
+	// Return all the elements that pass a truth test.
+	// Delegates to **ECMAScript 5**'s native `filter` if available.
+	// Aliased as `select`.
+	_.filter = function(obj, predicate, context) {
+		var results = [];
+		if (obj == null) return results;
+		if (nativeFilter && obj.filter === nativeFilter) return obj.filter(predicate, context);
+		each(obj, function(value, index, list) {
+			if (predicate.call(context, value, index, list)) results.push(value);
+		});
+		return results;
+	};
+
+	// Return all the elements for which a truth test fails.
+//	_.reject = function(obj, predicate, context) {
+//		return _.filter(obj, function(value, index, list) {
+//			return !predicate.call(context, value, index, list);
+//		}, context);
+//	};
+
+	// Determine whether all of the elements match a truth test.
+	// Delegates to **ECMAScript 5**'s native `every` if available.
+	// Aliased as `all`.
+	_.every = function(obj, predicate, context) {
+		predicate || (predicate = _.identity);
+		var result = true;
+		if (obj == null) return result;
+		if (nativeEvery && obj.every === nativeEvery) return obj.every(predicate, context);
+		each(obj, function(value, index, list) {
+			if (!(result = result && predicate.call(context, value, index, list))) return breaker;
+		});
+		return !!result;
+	};
+
+	// Determine if at least one element in the object matches a truth test.
+	// Delegates to **ECMAScript 5**'s native `some` if available.
+	// Aliased as `any`.
+	var any = _.any = function(obj, predicate, context) {
+		predicate || (predicate = _.identity);
+		var result = false;
+		if (obj == null) return result;
+		if (nativeSome && obj.some === nativeSome) return obj.some(predicate, context);
+		each(obj, function(value, index, list) {
+			if (result || (result = predicate.call(context, value, index, list))) return breaker;
+		});
+		return !!result;
+	};
+
+	// Determine if the array or object contains a given value (using `===`).
+	_.contains = function(obj, target) {
+		if (obj == null) return false;
+		if (nativeIndexOf && obj.indexOf === nativeIndexOf) return obj.indexOf(target) != -1;
+		return any(obj, function(value) {
+			return value === target;
+		});
+	};
+
+	// Invoke a method (with arguments) on every item in a collection.
+	_.invoke = function(obj, method) {
+		var args = slice.call(arguments, 2);
+		var isFunc = _.isFunction(method);
+		return _.map(obj, function(value) {
+			return (isFunc ? method : value[method]).apply(value, args);
+		});
+	};
+
+	// Convenience version of a common use case of `map`: fetching a property.
+	_.pluck = function(obj, key) {
+		return _.map(obj, _.property(key));
+	};
+
+	// Convenience version of a common use case of `filter`: selecting only objects
+	// containing specific `key:value` pairs.
+//	_.where = function(obj, attrs) {
+//		return _.filter(obj, _.matches(attrs));
+//	};
+
+	// Convenience version of a common use case of `find`: getting the first object
+	// containing specific `key:value` pairs.
+//	_.findWhere = function(obj, attrs) {
+//		return _.find(obj, _.matches(attrs));
+//	};
+
+	// Return the maximum element or (element-based computation).
+	// Can't optimize arrays of integers longer than 65,535 elements.
+	// See [WebKit Bug 80797](https://bugs.webkit.org/show_bug.cgi?id=80797)
+	_.max = function(obj, iterator, context) {
+		if (!iterator && _.isArray(obj) && obj[0] === +obj[0] && obj.length < 65535) {
+			return Math.max.apply(Math, obj);
+		}
+		var result = -Infinity, lastComputed = -Infinity;
+		each(obj, function(value, index, list) {
+			var computed = iterator ? iterator.call(context, value, index, list) : value;
+			if (computed > lastComputed) {
+				result = value;
+				lastComputed = computed;
+			}
+		});
+		return result;
+	};
+
+	// Return the minimum element (or element-based computation).
+	_.min = function(obj, iterator, context) {
+		if (!iterator && _.isArray(obj) && obj[0] === +obj[0] && obj.length < 65535) {
+			return Math.min.apply(Math, obj);
+		}
+		var result = Infinity, lastComputed = Infinity;
+		each(obj, function(value, index, list) {
+			var computed = iterator ? iterator.call(context, value, index, list) : value;
+			if (computed < lastComputed) {
+				result = value;
+				lastComputed = computed;
+			}
+		});
+		return result;
+	};
+
+	// Shuffle an array, using the modern version of the
+	// [Fisher-Yates shuffle](http://en.wikipedia.org/wiki/Fisher–Yates_shuffle).
+	_.shuffle = function(obj) {
+		var rand;
+		var index = 0;
+		var shuffled = [];
+		each(obj, function(value) {
+			rand = _.random(index++);
+			shuffled[index - 1] = shuffled[rand];
+			shuffled[rand] = value;
+		});
+		return shuffled;
+	};
+
+	// Sample **n** random values from a collection.
+	// If **n** is not specified, returns a single random element.
+	// The internal `guard` argument allows it to work with `map`.
+//	_.sample = function(obj, n, guard) {
+//		if (n == null || guard) {
+//			if (obj.length !== +obj.length) obj = _.values(obj);
+//			return obj[_.random(obj.length - 1)];
+//		}
+//		return _.shuffle(obj).slice(0, Math.max(0, n));
+//	};
+
+	// An internal function to generate lookup iterators.
+	var lookupIterator = function(value) {
+		if (value == null) return _.identity;
+		if (_.isFunction(value)) return value;
+		return _.property(value);
+	};
+
+	// Sort the object's values by a criterion produced by an iterator.
+	_.sortBy = function(obj, iterator, context) {
+		iterator = lookupIterator(iterator);
+		return _.pluck(_.map(obj, function(value, index, list) {
+			return {
+				value: value,
+				index: index,
+				criteria: iterator.call(context, value, index, list)
+			};
+		}).sort(function(left, right) {
+			var a = left.criteria;
+			var b = right.criteria;
+			if (a !== b) {
+				if (a > b || a === void 0) return 1;
+				if (a < b || b === void 0) return -1;
+			}
+			return left.index - right.index;
+		}), 'value');
+	};
+
+	// An internal function used for aggregate "group by" operations.
+//	var group = function(behavior) {
+//		return function(obj, iterator, context) {
+//			var result = {};
+//			iterator = lookupIterator(iterator);
+//			each(obj, function(value, index) {
+//				var key = iterator.call(context, value, index, obj);
+//				behavior(result, key, value);
+//			});
+//			return result;
+//		};
+//	};
+
+	// Groups the object's values by a criterion. Pass either a string attribute
+	// to group by, or a function that returns the criterion.
+//	_.groupBy = group(function(result, key, value) {
+//		_.has(result, key) ? result[key].push(value) : result[key] = [value];
+//	});
+
+	// Indexes the object's values by a criterion, similar to `groupBy`, but for
+	// when you know that your index values will be unique.
+//	_.indexBy = group(function(result, key, value) {
+//		result[key] = value;
+//	});
+
+	// Counts instances of an object that group by a certain criterion. Pass
+	// either a string attribute to count by, or a function that returns the
+	// criterion.
+//	_.countBy = group(function(result, key) {
+//		_.has(result, key) ? result[key]++ : result[key] = 1;
+//	});
+
+	// Use a comparator function to figure out the smallest index at which
+	// an object should be inserted so as to maintain order. Uses binary search.
+//	_.sortedIndex = function(array, obj, iterator, context) {
+//		iterator = lookupIterator(iterator);
+//		var value = iterator.call(context, obj);
+//		var low = 0, high = array.length;
+//		while (low < high) {
+//			var mid = (low + high) >>> 1;
+//			iterator.call(context, array[mid]) < value ? low = mid + 1 : high = mid;
+//		}
+//		return low;
+//	};
+
+	// Safely create a real, live array from anything iterable.
+	_.toArray = function(obj) {
+		if (!obj) return [];
+		if (_.isArray(obj)) return slice.call(obj);
+		if (obj.length === +obj.length) return _.map(obj, _.identity);
+		return _.values(obj);
+	};
+
+	// Return the number of elements in an object.
+	_.size = function(obj) {
+		if (obj == null) return 0;
+		return (obj.length === +obj.length) ? obj.length : _.keys(obj).length;
+	};
+
+	// Array Functions
+	// ---------------
+
+	// Get the first element of an array. Passing **n** will return the first N
+	// values in the array. Aliased as `head` and `take`. The **guard** check
+	// allows it to work with `_.map`.
+//	_.first = _.head = _.take = function(array, n, guard) {
+//		if (array == null) return void 0;
+//		if ((n == null) || guard) return array[0];
+//		if (n < 0) return [];
+//		return slice.call(array, 0, n);
+//	};
+
+	// Returns everything but the last entry of the array. Especially useful on
+	// the arguments object. Passing **n** will return all the values in
+	// the array, excluding the last N. The **guard** check allows it to work with
+	// `_.map`.
+//	_.initial = function(array, n, guard) {
+//		return slice.call(array, 0, array.length - ((n == null) || guard ? 1 : n));
+//	};
+
+	// Get the last element of an array. Passing **n** will return the last N
+	// values in the array. The **guard** check allows it to work with `_.map`.
+	_.last = function(array, n, guard) {
+		if (array == null) return void 0;
+		if ((n == null) || guard) return array[array.length - 1];
+		return slice.call(array, Math.max(array.length - n, 0));
+	};
+
+	// Returns everything but the first entry of the array. Aliased as `tail` and `drop`.
+	// Especially useful on the arguments object. Passing an **n** will return
+	// the rest N values in the array. The **guard**
+	// check allows it to work with `_.map`.
+	_.rest = _.tail = _.drop = function(array, n, guard) {
+		return slice.call(array, (n == null) || guard ? 1 : n);
+	};
+
+	// Trim out all falsy values from an array.
+	_.compact = function(array) {
+		return _.filter(array, _.identity);
+	};
+
+	// Internal implementation of a recursive `flatten` function.
+	var flatten = function(input, shallow, output) {
+		if (shallow && _.every(input, _.isArray)) {
+			return concat.apply(output, input);
+		}
+		each(input, function(value) {
+			if (_.isArray(value) || _.isArguments(value)) {
+				shallow ? push.apply(output, value) : flatten(value, shallow, output);
+			} else {
+				output.push(value);
+			}
+		});
+		return output;
+	};
+
+	// Flatten out an array, either recursively (by default), or just one level.
+	_.flatten = function(array, shallow) {
+		return flatten(array, shallow, []);
+	};
+
+	// Return a version of the array that does not contain the specified value(s).
+	_.without = function(array) {
+		return _.difference(array, slice.call(arguments, 1));
+	};
+
+	// Split an array into two arrays: one whose elements all satisfy the given
+	// predicate, and one whose elements all do not satisfy the predicate.
+	_.partition = function(array, predicate) {
+		var pass = [], fail = [];
+		each(array, function(elem) {
+			(predicate(elem) ? pass : fail).push(elem);
+		});
+		return [pass, fail];
+	};
+
+	// Produce a duplicate-free version of the array. If the array has already
+	// been sorted, you have the option of using a faster algorithm.
+	// Aliased as `unique`.
+	_.uniq = function(array, isSorted, iterator, context) {
+		if (_.isFunction(isSorted)) {
+			context = iterator;
+			iterator = isSorted;
+			isSorted = false;
+		}
+		var initial = iterator ? _.map(array, iterator, context) : array;
+		var results = [];
+		var seen = [];
+		each(initial, function(value, index) {
+			if (isSorted ? (!index || seen[seen.length - 1] !== value) : !_.contains(seen, value)) {
+				seen.push(value);
+				results.push(array[index]);
+			}
+		});
+		return results;
+	};
+
+	// Produce an array that contains the union: each distinct element from all of
+	// the passed-in arrays.
+	_.union = function() {
+		return _.uniq(_.flatten(arguments, true));
+	};
+
+	// Produce an array that contains every item shared between all the
+	// passed-in arrays.
+	_.intersection = function(array) {
+		var rest = slice.call(arguments, 1);
+		return _.filter(_.uniq(array), function(item) {
+			return _.every(rest, function(other) {
+				return _.contains(other, item);
+			});
+		});
+	};
+
+	// Take the difference between one array and a number of other arrays.
+	// Only the elements present in just the first array will remain.
+	_.difference = function(array) {
+		var rest = concat.apply(ArrayProto, slice.call(arguments, 1));
+		return _.filter(array, function(value){ return !_.contains(rest, value); });
+	};
+
+	// Zip together multiple lists into a single array -- elements that share
+	// an index go together.
+//	_.zip = function() {
+//		var length = _.max(_.pluck(arguments, 'length').concat(0));
+//		var results = new Array(length);
+//		for (var i = 0; i < length; i++) {
+//			results[i] = _.pluck(arguments, '' + i);
+//		}
+//		return results;
+//	};
+
+	// Converts lists into objects. Pass either a single array of `[key, value]`
+	// pairs, or two parallel arrays of the same length -- one of keys, and one of
+	// the corresponding values.
+	_.object = function(list, values) {
+		if (list == null) return {};
+		var result = {};
+		for (var i = 0, length = list.length; i < length; i++) {
+			if (values) {
+				result[list[i]] = values[i];
+			} else {
+				result[list[i][0]] = list[i][1];
+			}
+		}
+		return result;
+	};
+
+	// If the browser doesn't supply us with indexOf (I'm looking at you, **MSIE**),
+	// we need this function. Return the position of the first occurrence of an
+	// item in an array, or -1 if the item is not included in the array.
+	// Delegates to **ECMAScript 5**'s native `indexOf` if available.
+	// If the array is large and already in sort order, pass `true`
+	// for **isSorted** to use binary search.
+	_.indexOf = function(array, item, isSorted) {
+		if (array == null) return -1;
+		var i = 0, length = array.length;
+		if (isSorted) {
+			if (typeof isSorted == 'number') {
+				i = (isSorted < 0 ? Math.max(0, length + isSorted) : isSorted);
+			} else {
+				i = _.sortedIndex(array, item);
+				return array[i] === item ? i : -1;
+			}
+		}
+		if (nativeIndexOf && array.indexOf === nativeIndexOf) return array.indexOf(item, isSorted);
+		for (; i < length; i++) if (array[i] === item) return i;
+		return -1;
+	};
+
+	// Delegates to **ECMAScript 5**'s native `lastIndexOf` if available.
+//	_.lastIndexOf = function(array, item, from) {
+//		if (array == null) return -1;
+//		var hasIndex = from != null;
+//		if (nativeLastIndexOf && array.lastIndexOf === nativeLastIndexOf) {
+//			return hasIndex ? array.lastIndexOf(item, from) : array.lastIndexOf(item);
+//		}
+//		var i = (hasIndex ? from : array.length);
+//		while (i--) if (array[i] === item) return i;
+//		return -1;
+//	};
+
+	// Generate an integer Array containing an arithmetic progression. A port of
+	// the native Python `range()` function. See
+	// [the Python documentation](http://docs.python.org/library/functions.html#range).
+	_.range = function(start, stop, step) {
+		if (arguments.length <= 1) {
+			stop = start || 0;
+			start = 0;
+		}
+		step = arguments[2] || 1;
+
+		var length = Math.max(Math.ceil((stop - start) / step), 0);
+		var idx = 0;
+		var range = new Array(length);
+
+		while(idx < length) {
+			range[idx++] = start;
+			start += step;
+		}
+
+		return range;
+	};
+
+	// Function (ahem) Functions
+	// ------------------
+
+	// Reusable constructor function for prototype setting.
+	var ctor = function(){};
+
+	// Create a function bound to a given object (assigning `this`, and arguments,
+	// optionally). Delegates to **ECMAScript 5**'s native `Function.bind` if
+	// available.
+	_.bind = function(func, context) {
+		var args, bound;
+		if (nativeBind && func.bind === nativeBind) return nativeBind.apply(func, slice.call(arguments, 1));
+		if (!_.isFunction(func)) throw new TypeError;
+		args = slice.call(arguments, 2);
+		return bound = function() {
+			if (!(this instanceof bound)) return func.apply(context, args.concat(slice.call(arguments)));
+			ctor.prototype = func.prototype;
+			var self = new ctor;
+			ctor.prototype = null;
+			var result = func.apply(self, args.concat(slice.call(arguments)));
+			if (Object(result) === result) return result;
+			return self;
+		};
+	};
+
+	// Partially apply a function by creating a version that has had some of its
+	// arguments pre-filled, without changing its dynamic `this` context. _ acts
+	// as a placeholder, allowing any combination of arguments to be pre-filled.
+	_.partial = function(func) {
+		var boundArgs = slice.call(arguments, 1);
+		return function() {
+			var position = 0;
+			var args = boundArgs.slice();
+			for (var i = 0, length = args.length; i < length; i++) {
+				if (args[i] === _) args[i] = arguments[position++];
+			}
+			while (position < arguments.length) args.push(arguments[position++]);
+			return func.apply(this, args);
+		};
+	};
+
+	// Bind a number of an object's methods to that object. Remaining arguments
+	// are the method names to be bound. Useful for ensuring that all callbacks
+	// defined on an object belong to it.
+	_.bindAll = function(obj) {
+		var funcs = slice.call(arguments, 1);
+		if (funcs.length === 0) funcs = _.functions(obj);
+		each(funcs, function(f) { obj[f] = _.bind(obj[f], obj); });
+		return obj;
+	};
+	
+	// Memoize an expensive function by storing its results.
+//	_.memoize = function(func, hasher) {
+//		var memo = {};
+//		hasher || (hasher = _.identity);
+//		return function() {
+//			var key = hasher.apply(this, arguments);
+//			return _.has(memo, key) ? memo[key] : (memo[key] = func.apply(this, arguments));
+//		};
+//	};
+
+	// Delays a function for the given number of milliseconds, and then calls
+	// it with the arguments supplied.
+	_.delay = function(func, wait) {
+		var args = slice.call(arguments, 2);
+		return setTimeout(function(){ return func.apply(null, args); }, wait);
+	};
+
+	// Defers a function, scheduling it to run after the current call stack has
+	// cleared.
+	_.defer = function(func) {
+		return _.delay.apply(_, [func, 1].concat(slice.call(arguments, 1)));
+	};
+
+	// Returns a function, that, when invoked, will only be triggered at most once
+	// during a given window of time. Normally, the throttled function will run
+	// as much as it can, without ever going more than once per `wait` duration;
+	// but if you'd like to disable the execution on the leading edge, pass
+	// `{leading: false}`. To disable execution on the trailing edge, ditto.
+//	_.throttle = function(func, wait, options) {
+//		var context, args, result;
+//		var timeout = null;
+//		var previous = 0;
+//		options || (options = {});
+//		var later = function() {
+//			previous = options.leading === false ? 0 : _.now();
+//			timeout = null;
+//			result = func.apply(context, args);
+//			context = args = null;
+//		};
+//		return function() {
+//			var now = _.now();
+//			if (!previous && options.leading === false) previous = now;
+//			var remaining = wait - (now - previous);
+//			context = this;
+//			args = arguments;
+//			if (remaining <= 0) {
+//				clearTimeout(timeout);
+//				timeout = null;
+//				previous = now;
+//				result = func.apply(context, args);
+//				context = args = null;
+//			} else if (!timeout && options.trailing !== false) {
+//				timeout = setTimeout(later, remaining);
+//			}
+//			return result;
+//		};
+//	};
+
+	// Returns a function, that, as long as it continues to be invoked, will not
+	// be triggered. The function will be called after it stops being called for
+	// N milliseconds. If `immediate` is passed, trigger the function on the
+	// leading edge, instead of the trailing.
+//	_.debounce = function(func, wait, immediate) {
+//		var timeout, args, context, timestamp, result;
+//
+//		var later = function() {
+//			var last = _.now() - timestamp;
+//			if (last < wait) {
+//				timeout = setTimeout(later, wait - last);
+//			} else {
+//				timeout = null;
+//				if (!immediate) {
+//					result = func.apply(context, args);
+//					context = args = null;
+//				}
+//			}
+//		};
+//
+//		return function() {
+//			context = this;
+//			args = arguments;
+//			timestamp = _.now();
+//			var callNow = immediate && !timeout;
+//			if (!timeout) {
+//				timeout = setTimeout(later, wait);
+//			}
+//			if (callNow) {
+//				result = func.apply(context, args);
+//				context = args = null;
+//			}
+//
+//			return result;
+//		};
+//	};
+
+	// Returns a function that will be executed at most one time, no matter how
+	// often you call it. Useful for lazy initialization.
+	_.once = function(func) {
+		var ran = false, memo;
+		return function() {
+			if (ran) return memo;
+			ran = true;
+			memo = func.apply(this, arguments);
+			func = null;
+			return memo;
+		};
+	};
+
+	// Returns the first function passed as an argument to the second,
+	// allowing you to adjust arguments, run code before and after, and
+	// conditionally execute the original function.
+	_.wrap = function(func, wrapper) {
+		return _.partial(wrapper, func);
+	};
+
+	// Returns a function that is the composition of a list of functions, each
+	// consuming the return value of the function that follows.
+//	_.compose = function() {
+//		var funcs = arguments;
+//		return function() {
+//			var args = arguments;
+//			for (var i = funcs.length - 1; i >= 0; i--) {
+//				args = [funcs[i].apply(this, args)];
+//			}
+//			return args[0];
+//		};
+//	};
+
+	// Returns a function that will only be executed after being called N times.
+//	_.after = function(times, func) {
+//		return function() {
+//			if (--times < 1) {
+//				return func.apply(this, arguments);
+//			}
+//		};
+//	};
+
+	// Object Functions
+	// ----------------
+
+	// Retrieve the names of an object's properties.
+	// Delegates to **ECMAScript 5**'s native `Object.keys`
+	_.keys = function(obj) {
+		if (!_.isObject(obj)) return [];
+		if (nativeKeys) return nativeKeys(obj);
+		var keys = [];
+		for (var key in obj) if (_.has(obj, key)) keys.push(key);
+		return keys;
+	};
+
+	// Retrieve the values of an object's properties.
+	_.values = function(obj) {
+		var keys = _.keys(obj);
+		var length = keys.length;
+		var values = new Array(length);
+		for (var i = 0; i < length; i++) {
+			values[i] = obj[keys[i]];
+		}
+		return values;
+	};
+
+	// Convert an object into a list of `[key, value]` pairs.
+	_.pairs = function(obj) {
+		var keys = _.keys(obj);
+		var length = keys.length;
+		var pairs = new Array(length);
+		for (var i = 0; i < length; i++) {
+			pairs[i] = [keys[i], obj[keys[i]]];
+		}
+		return pairs;
+	};
+
+//	// Invert the keys and values of an object. The values must be serializable.
+//	_.invert = function(obj) {
+//		var result = {};
+//		var keys = _.keys(obj);
+//		for (var i = 0, length = keys.length; i < length; i++) {
+//			result[obj[keys[i]]] = keys[i];
+//		}
+//		return result;
+//	};
+
+	// Return a sorted list of the function names available on the object.
+	// Aliased as `methods`
+//	_.functions = _.methods = function(obj) {
+	_.functions = function(obj) {
+		var names = [];
+		for (var key in obj) {
+			if (_.isFunction(obj[key])) names.push(key);
+		}
+		return names.sort();
+	};
+
+	// Extend a given object with all the properties in passed-in object(s).
+	_.extend = function(obj) 
+	{
+		each(slice.call(arguments, 1), function(source) 
+		{
+			if (source)
+			{
+				for (var propName in source) 
+				{
+					conbo.cloneProperty(source, propName, obj);
+				}
+			}
+		});
+		return obj;
+	};
+
+	// Return a copy of the object only containing the whitelisted properties.
+	_.pick = function(obj) {
+		var copy = {};
+		var keys = concat.apply(ArrayProto, slice.call(arguments, 1));
+		each(keys, function(key) {
+			if (key in obj)
+			{
+				conbo.cloneProperty(obj, key, copy);
+			}
+		});
+		return copy;
+	};
+
+	 // Return a copy of the object without the blacklisted properties.
+	_.omit = function(obj) {
+		var copy = {};
+		var keys = concat.apply(ArrayProto, slice.call(arguments, 1));
+		for (var key in obj) 
+		{
+			if (!_.contains(keys, key))
+			{
+				conbo.cloneProperty(obj, key, copy);
+			}
+		}
+		return copy;
+	};
+
+	// Fill in a given object with default properties.
+	_.defaults = function(obj) 
+	{
+		each(slice.call(arguments, 1), function(source) 
+		{
+			if (source) 
+			{
+				for (var propName in source) 
+				{
+					if (obj[propName] !== void 0) continue;
+					conbo.cloneProperty(source, propName, obj);
+				}
+			}
+		});
+		return obj;
+	};
+
+	// Create a (shallow-cloned) duplicate of an object.
+	_.clone = function(obj) {
+		if (!_.isObject(obj)) return obj;
+		return _.isArray(obj) ? obj.slice() : _.extend({}, obj);
+	};
+
+	// Invokes interceptor with the obj, and then returns obj.
+	// The primary purpose of this method is to "tap into" a method chain, in
+	// order to perform operations on intermediate results within the chain.
+//	_.tap = function(obj, interceptor) {
+//		interceptor(obj);
+//		return obj;
+//	};
+
+	// Internal recursive comparison function for `isEqual`.
+	var eq = function(a, b, aStack, bStack) {
+		// Identical objects are equal. `0 === -0`, but they aren't identical.
+		// See the [Harmony `egal` proposal](http://wiki.ecmascript.org/doku.php?id=harmony:egal).
+		if (a === b) return a !== 0 || 1 / a == 1 / b;
+		// A strict comparison is necessary because `null == undefined`.
+		if (a == null || b == null) return a === b;
+		// Unwrap any wrapped objects.
+		// Compare `[[Class]]` names.
+		var className = toString.call(a);
+		if (className != toString.call(b)) return false;
+		switch (className) {
+			// Strings, numbers, dates, and booleans are compared by value.
+			case '[object String]':
+				// Primitives and their corresponding object wrappers are equivalent; thus, `"5"` is
+				// equivalent to `new String("5")`.
+				return a == String(b);
+			case '[object Number]':
+				// `NaN`s are equivalent, but non-reflexive. An `egal` comparison is performed for
+				// other numeric values.
+				return a != +a ? b != +b : (a == 0 ? 1 / a == 1 / b : a == +b);
+			case '[object Date]':
+			case '[object Boolean]':
+				// Coerce dates and booleans to numeric primitive values. Dates are compared by their
+				// millisecond representations. Note that invalid dates with millisecond representations
+				// of `NaN` are not equivalent.
+				return +a == +b;
+			// RegExps are compared by their source patterns and flags.
+			case '[object RegExp]':
+				return a.source == b.source &&
+							 a.global == b.global &&
+							 a.multiline == b.multiline &&
+							 a.ignoreCase == b.ignoreCase;
+		}
+		if (typeof a != 'object' || typeof b != 'object') return false;
+		// Assume equality for cyclic structures. The algorithm for detecting cyclic
+		// structures is adapted from ES 5.1 section 15.12.3, abstract operation `JO`.
+		var length = aStack.length;
+		while (length--) {
+			// Linear search. Performance is inversely proportional to the number of
+			// unique nested structures.
+			if (aStack[length] == a) return bStack[length] == b;
+		}
+		// Objects with different constructors are not equivalent, but `Object`s
+		// from different frames are.
+		var aCtor = a.constructor, bCtor = b.constructor;
+		if (aCtor !== bCtor && !(_.isFunction(aCtor) && (aCtor instanceof aCtor) &&
+														 _.isFunction(bCtor) && (bCtor instanceof bCtor))
+												&& ('constructor' in a && 'constructor' in b)) {
+			return false;
+		}
+		// Add the first object to the stack of traversed objects.
+		aStack.push(a);
+		bStack.push(b);
+		var size = 0, result = true;
+		// Recursively compare objects and arrays.
+		if (className == '[object Array]') {
+			// Compare array lengths to determine if a deep comparison is necessary.
+			size = a.length;
+			result = size == b.length;
+			if (result) {
+				// Deep compare the contents, ignoring non-numeric properties.
+				while (size--) {
+					if (!(result = eq(a[size], b[size], aStack, bStack))) break;
+				}
+			}
+		} else {
+			// Deep compare objects.
+			for (var key in a) {
+				if (_.has(a, key)) {
+					// Count the expected number of properties.
+					size++;
+					// Deep compare each member.
+					if (!(result = _.has(b, key) && eq(a[key], b[key], aStack, bStack))) break;
+				}
+			}
+			// Ensure that both objects contain the same number of properties.
+			if (result) {
+				for (key in b) {
+					if (_.has(b, key) && !(size--)) break;
+				}
+				result = !size;
+			}
+		}
+		// Remove the first object from the stack of traversed objects.
+		aStack.pop();
+		bStack.pop();
+		return result;
+	};
+
+	// Perform a deep comparison to check if two objects are equal.
+	_.isEqual = function(a, b) {
+		return eq(a, b, [], []);
+	};
+
+	// Is a given array, string, or object empty?
+	// An "empty" object has no enumerable own-properties.
+	_.isEmpty = function(obj) {
+		if (obj == null) return true;
+		if (_.isArray(obj) || _.isString(obj)) return obj.length === 0;
+		for (var key in obj) if (_.has(obj, key)) return false;
+		return true;
+	};
+
+	// Is a given value a DOM element?
+	_.isElement = function(obj) {
+		return !!(obj && obj.nodeType === 1);
+	};
+
+	// Is a given value an array?
+	// Delegates to ECMA5's native Array.isArray
+	_.isArray = nativeIsArray || function(obj) {
+		return toString.call(obj) == '[object Array]';
+	};
+
+	// Is a given variable an object?
+	_.isObject = function(obj) {
+		return obj === Object(obj);
+	};
+
+	// Add some isType methods: isArguments, isFunction, isString, isNumber, isDate, isRegExp.
+	each(['Arguments', 'Function', 'String', 'Number', 'Date', 'RegExp'], function(name) {
+		_['is' + name] = function(obj) {
+			return toString.call(obj) == '[object ' + name + ']';
+		};
+	});
+
+	// Define a fallback version of the method in browsers (ahem, IE), where
+	// there isn't any inspectable "Arguments" type.
+	if (!_.isArguments(arguments)) {
+		_.isArguments = function(obj) {
+			return !!(obj && _.has(obj, 'callee'));
+		};
+	}
+	
+	// Optimize `isFunction` if appropriate.
+	if (typeof (/./) !== 'function') {
+		_.isFunction = function(obj) {
+			return typeof obj === 'function';
+		};
+	}
+	
+	// Is a given object a finite number?
+	_.isFinite = function(obj) {
+		return isFinite(obj) && !isNaN(parseFloat(obj));
+	};
+
+	// Is the given value `NaN`? (NaN is the only number which does not equal itself).
+	_.isNaN = function(obj) {
+		return _.isNumber(obj) && obj != +obj;
+	};
+
+	// Is a given value a boolean?
+	_.isBoolean = function(obj) {
+		return obj === true || obj === false || toString.call(obj) == '[object Boolean]';
+	};
+
+	// Is a given value equal to null?
+	_.isNull = function(obj) {
+		return obj === null;
+	};
+
+	// Is a given variable undefined?
+	_.isUndefined = function(obj) {
+		return obj === void 0;
+	};
+
+	// Shortcut function for checking if an object has a given property directly
+	// on itself (in other words, not on a prototype).
+	_.has = function(obj, key) {
+		return hasOwnProperty.call(obj, key);
+	};
+
+	// Utility Functions
+	// -----------------
+
+	// Keep the identity function around for default iterators.
+	_.identity = function(value) {
+		return value;
+	};
+	
+//	_.constant = function(value) {
+//		return function () {
+//			return value;
+//		};
+//	};
+
+	_.property = function(key) {
+		return function(obj) {
+			return obj[key];
+		};
+	};
+
+	// Returns a predicate for checking whether an object has a given set of `key:value` pairs.
+	_.matches = function(attrs) {
+		return function(obj) {
+			if (obj === attrs) return true; //avoid comparing an object to itself.
+			for (var key in attrs) {
+				if (attrs[key] !== obj[key])
+					return false;
+			}
+			return true;
+		}
+	};
+
+//	// Run a function **n** times.
+//	_.times = function(n, iterator, context) {
+//		var accum = Array(Math.max(0, n));
+//		for (var i = 0; i < n; i++) accum[i] = iterator.call(context, i);
+//		return accum;
+//	};
+
+	// Return a random integer between min and max (inclusive).
+	_.random = function(min, max) {
+		if (max == null) {
+			max = min;
+			min = 0;
+		}
+		return min + Math.floor(Math.random() * (max - min + 1));
+	};
+
+	// A (possibly faster) way to get the current timestamp as an integer.
+	_.now = Date.now || function() { return new Date().getTime(); };
+
+//	// List of HTML entities for escaping.
+//	var entityMap = {
+//		escape: {
+//			'&': '&amp;',
+//			'<': '&lt;',
+//			'>': '&gt;',
+//			'"': '&quot;',
+//			"'": '&#x27;'
+//		}
+//	};
+//	entityMap.unescape = _.invert(entityMap.escape);
+//
+//	// Regexes containing the keys and values listed immediately above.
+//	var entityRegexes = {
+//		escape:	 new RegExp('[' + _.keys(entityMap.escape).join('') + ']', 'g'),
+//		unescape: new RegExp('(' + _.keys(entityMap.unescape).join('|') + ')', 'g')
+//	};
+//
+//	// Functions for escaping and unescaping strings to/from HTML interpolation.
+//	_.each(['escape', 'unescape'], function(method) {
+//		_[method] = function(string) {
+//			if (string == null) return '';
+//			return ('' + string).replace(entityRegexes[method], function(match) {
+//				return entityMap[method][match];
+//			});
+//		};
+//	});
+
+	// If the value of the named `property` is a function then invoke it with the
+	// `object` as context; otherwise, return it.
+//	_.result = function(object, property) {
+//		if (object == null) return void 0;
+//		var value = object[property];
+//		return _.isFunction(value) ? value.call(object) : value;
+//	};
+
+//	// Add your own custom functions to the Underscore object.
+//	_.mixin = function(obj) {
+//		each(_.functions(obj), function(name) {
+//			var func = _[name] = obj[name];
+//			_.prototype[name] = function() {
+//				var args = [this._wrapped];
+//				push.apply(args, arguments);
+//				return result.call(this, func.apply(_, args));
+//			};
+//		});
+//	};
+
+	// Generate a unique integer id (unique within the entire client session).
+	// Useful for temporary DOM ids.
+	var idCounter = 0;
+	_.uniqueId = function(prefix) {
+		var id = ++idCounter + '';
+		return prefix ? prefix + id : id;
+	};
+
+//	// By default, Underscore uses ERB-style template delimiters, change the
+//	// following template settings to use alternative delimiters.
+//	_.templateSettings = {
+//		evaluate		: /<%([\s\S]+?)%>/g,
+//		interpolate : /<%=([\s\S]+?)%>/g,
+//		escape			: /<%-([\s\S]+?)%>/g
+//	};
+//
+//	// When customizing `templateSettings`, if you don't want to define an
+//	// interpolation, evaluation or escaping regex, we need one that is
+//	// guaranteed not to match.
+//	var noMatch = /(.)^/;
+//
+//	// Certain characters need to be escaped so that they can be put into a
+//	// string literal.
+//	var escapes = {
+//		"'":			"'",
+//		'\\':		 '\\',
+//		'\r':		 'r',
+//		'\n':		 'n',
+//		'\t':		 't',
+//		'\u2028': 'u2028',
+//		'\u2029': 'u2029'
+//	};
+//
+//	var escaper = /\\|'|\r|\n|\t|\u2028|\u2029/g;
+//
+//	// JavaScript micro-templating, similar to John Resig's implementation.
+//	// Underscore templating handles arbitrary delimiters, preserves whitespace,
+//	// and correctly escapes quotes within interpolated code.
+//	_.template = function(text, data, settings) {
+//		var render;
+//		settings = _.defaults({}, settings, _.templateSettings);
+//
+//		// Combine delimiters into one regular expression via alternation.
+//		var matcher = new RegExp([
+//			(settings.escape || noMatch).source,
+//			(settings.interpolate || noMatch).source,
+//			(settings.evaluate || noMatch).source
+//		].join('|') + '|$', 'g');
+//
+//		// Compile the template source, escaping string literals appropriately.
+//		var index = 0;
+//		var source = "__p+='";
+//		text.replace(matcher, function(match, escape, interpolate, evaluate, offset) {
+//			source += text.slice(index, offset)
+//				.replace(escaper, function(match) { return '\\' + escapes[match]; });
+//
+//			if (escape) {
+//				source += "'+\n((__t=(" + escape + "))==null?'':_.escape(__t))+\n'";
+//			}
+//			if (interpolate) {
+//				source += "'+\n((__t=(" + interpolate + "))==null?'':__t)+\n'";
+//			}
+//			if (evaluate) {
+//				source += "';\n" + evaluate + "\n__p+='";
+//			}
+//			index = offset + match.length;
+//			return match;
+//		});
+//		source += "';\n";
+//
+//		// If a variable is not specified, place data values in local scope.
+//		if (!settings.variable) source = 'with(obj||{}){\n' + source + '}\n';
+//
+//		source = "var __t,__p='',__j=Array.prototype.join," +
+//			"print=function(){__p+=__j.call(arguments,'');};\n" +
+//			source + "return __p;\n";
+//
+//		try {
+//			render = new Function(settings.variable || 'obj', '_', source);
+//		} catch (e) {
+//			e.source = source;
+//			throw e;
+//		}
+//
+//		if (data) return render(data, _);
+//		var template = function(data) {
+//			return render.call(this, data, _);
+//		};
+//
+//		// Provide the compiled function source as a convenience for precompilation.
+//		template.source = 'function(' + (settings.variable || 'obj') + '){\n' + source + '}';
+//
+//		return template;
+//	};
+
+//	// Add a "chain" function, which will delegate to the wrapper.
+//	_.chain = function(obj) {
+//		return _(obj).chain();
+//	};
+//
+//	// OOP
+//	// ---------------
+//	// If Underscore is called as a function, it returns a wrapped object that
+//	// can be used OO-style. This wrapper holds altered versions of all the
+//	// underscore functions. Wrapped objects may be chained.
+//
+//	// Helper function to continue chaining intermediate results.
+//	var result = function(obj) {
+//		return this._chain ? _(obj).chain() : obj;
+//	};
+//
+//	// Add all of the Underscore functions to the wrapper object.
+//	_.mixin(_);
+//
+//	// Add all mutator Array functions to the wrapper.
+//	each(['pop', 'push', 'reverse', 'shift', 'sort', 'splice', 'unshift'], function(name) {
+//		var method = ArrayProto[name];
+//		_.prototype[name] = function() {
+//			var obj = this._wrapped;
+//			method.apply(obj, arguments);
+//			if ((name == 'shift' || name == 'splice') && obj.length === 0) delete obj[0];
+//			return result.call(this, obj);
+//		};
+//	});
+//	
+//	// Add all accessor Array functions to the wrapper.
+//	each(['concat', 'join', 'slice'], function(name) {
+//		var method = ArrayProto[name];
+//		_.prototype[name] = function() {
+//			return result.call(this, method.apply(this._wrapped, arguments));
+//		};
+//	});
+//
+//	_.extend(_.prototype, {
+//
+//		// Start chaining a wrapped Underscore object.
+//		chain: function() {
+//			this._chain = true;
+//			return this;
+//		},
+//
+//		// Extracts the result from a wrapped and chained object.
+//		value: function() {
+//			return this._wrapped;
+//		}
+//
+//	});
+	
+	// Add Underscore functions to Conbo
+	each(_.functions(_), function(name) 
+	{
+		if (name in conbo) return;
+		conbo[name] = _[name];
+	});
+	
+})();
+
+
+/**
+ * Is Conbo supported by the current browser?
+ */
+conbo.isSupported = !!Object.defineProperty && !!Object.getOwnPropertyDescriptor;
+
+/**
+ * Convert dash-or_underscore separated words into camelCaseWords
+ */
+conbo.toCamelCase = function(string)
+{
+	return (string || '').replace(/([-_])([a-z])/g, function (g) { return g[1].toUpperCase(); });
+};
+
+/**
+ * Is the value a Conbo class?
+ */
+conbo.isClass = function(value)
+{
+	return !!value && typeof value == 'function' && value.prototype instanceof conbo.Class;
+};
+
+/**
+ * Copies a property, including defined properties and accessors, 
+ * from one object to another
+ * 
+ * @param	source			Source object
+ * @param	sourceName		Name of the property on the source
+ * @param	target			Target object
+ * @param	targetName		Name of the property on the target (default: sourceName)
+ */
+conbo.cloneProperty = function(source, sourceName, target, targetName)
+{
+	targetName || (targetName = sourceName);
+	
+	var descriptor = Object.getOwnPropertyDescriptor(source, sourceName) 
+		|| {value:source[sourceName], configurable:true, writable:true, enumerable:true};
+	
+	Object.defineProperty(target, sourceName, descriptor);
+};
+
+/**
+ * Is the object an instance of the specified class(es) or implement the
+ * specified pseudo-interface(s)?
+ * 
+ * @example						var b = conbo.instanceOf(obj, conbo.EventDispatcher);
+ * @example						var b = conbo.instanceOf(obj, conbo.View, conbo.Injectable);
+ * @param	obj					The class instance
+ * @param	classOrInterface	The Conbo class or pseudo-interface to compare against
+ */
+conbo.instanceOf = function(obj, classOrInterface)
+{
+	var partials = conbo.rest(arguments);
+	
+	for (var p=0, c=partials.length; p<c; p++)
+	{
+		classOrInterface = partials[p];
+		
+		if (!classOrInterface) return false;
+		
+		if (conbo.isClass(classOrInterface))
+		{
+			if (!(obj instanceof classOrInterface)) return false;
+		}
+		else
+		{
+			for (var a in classOrInterface)
+			{
+				if (!(a in obj) || conbo.isFunction(obj[a]) != conbo.isFunction(classOrInterface[a])) 
+				{
+					return false;
+				}
+			}
+		}
+	}
+	
+	return true;
+};
+
+/**
+ * Loads a CSS and apply it to the DOM
+ * @param 	{String}	url		The CSS file's URL
+ * @param 	{String}	media	The media attribute (defaults to 'all')
+ */
+conbo.loadCss = function(url, media)
+{
+	if (!('document' in window) || !!document.querySelector('[href='+url+']'))
+	{
+		return this;
+	}
+	
+    var link, head; 
+    
+    link = document.createElement('link');
+    link.rel  = 'stylesheet';
+    link.type = 'text/css';
+    link.href = url;
+    link.media = media || 'all';
+    
+	head = document.getElementsByTagName('head')[0];
+    head.appendChild(link);
+    
+	return this;
+};
+
+
+/*
+ * Property utilities
+ */
+
+/**
+ * Return the names of all the enumerable properties on the specified object, 
+ * i.e. all of the keys that aren't functions
+ */
+conbo.properties = function(obj)
+{
+	return conbo.difference(conbo.keys(obj), conbo.functions(obj));
+};
+
+/**
+ * Create one or more property on this object that can be bound
+ * without using the get or set methods; if no property names are
+ * passed, all existing properties will be made bindable
+ * 
+ * @param	(String)	obj
+ * @param	(String)	propNames
+ */
+conbo.bindProperties = function(obj, propNames)
+{
+	propNames || (propNames = conbo.properties(obj));
+	
+	propNames.forEach(function(propName)
+	{
+		_defineProperty(obj, propName);
+	});
+	
+	return this;
+};
+
+/**
+ * Was the property created using Object.defineProperty()?
+ * @returns		Boolean
+ */
+conbo.isAccessor = function(obj, propName)
+{
+	var descriptor = Object.getOwnPropertyDescriptor(obj, propName);
+	return !!descriptor && (!!descriptor.set || !!descriptor.get);
 }
 
-if (!Array.prototype.forEach) 
+/**
+ * Is the specified property bindable?
+ * @returns		Boolean
+ */
+conbo.isBindableProperty = function(obj, propName)
 {
-	Array.prototype.forEach = function(callback, thisArg)
+	if (!conbo.isAccessor(obj, propName))
 	{
-		return _.each(this, callback, thisArg); 
-	};
-}
+		return false;
+	}
+	
+	var descriptor = Object.getOwnPropertyDescriptor(obj, propName);
+	return !!descriptor.set && descriptor.set.bindable;
+};
+
+/*
+ * Polyfill methods for useful ECMAScript 5 methods that aren't quite universal
+ */
 
 if (!String.prototype.trim) 
 {
@@ -72,26 +1538,143 @@ if (!String.prototype.trim)
 	};
 }
 
-if (!Object.prototype.hasOwnProperty) 
+if (!window.requestAnimationFrame)
 {
-	Object.prototype.hasOwnProperty = function(value) 
+	window.requestAnimationFrame = (function()
 	{
-		return value in this;
-	}; 
+		return window.webkitRequestAnimationFrame
+			|| window.mozRequestAnimationFrame
+			|| function(callback)
+			{
+				window.setTimeout(callback, 1000 / 60);
+			};
+	})();
 }
 
-/* 
- * A quick tweak for Lo-Dash/Underscore.js to enable it to differentiate
- * between functions and classes
- * 
- * @author		Neil Rackett
+
+/*
+ * Logging
  */
 
-var _isFunction = _.isFunction;
+/**
+ * Enable logging?
+ */
+conbo.logEnabled = true;
 
-_.isFunction = function(value)
+/**
+ * Logging
+ */
+
+var logMethods = ['log','warn','info','error'];
+
+logMethods.forEach(function(method)
 {
-	return _isFunction(value) && !conbo.isClass(value);
+	conbo[method] = function()
+	{
+		if (!console || !conbo.logEnabled) return;
+		console[method].apply(console, arguments);
+	}
+});
+
+/*
+ * Internal utility methods
+ */
+
+/**
+ * Dispatch a property change event from the specified object
+ */
+var _dispatchChange = function(obj, propName, value)
+{
+	if (!(obj instanceof conbo.EventDispatcher)) return;
+	
+	var options = {property:propName, value:value};
+	
+	obj.dispatchEvent(new conbo.ConboEvent('change:'+propName, options));
+	obj.dispatchEvent(new conbo.ConboEvent('change', options));
+};
+
+/**
+ * Creates a property which can be bound to DOM elements and others
+ * 
+ * @param	(Object)	obj			The EventDispatcher object on which the property will be defined
+ * @param	(String)	propName	The name of the property to be defined
+ * @param	(*)			value		The initial value of the property (optional)
+ * @param	(Function)	getter		The getter function (optional)
+ * @param	(Function)	setter		The setter function (optional)
+ * @param	(Boolean)	enumerable	Whether of not the property should be enumerable (optional, default: true)
+ */
+var _defineProperty = function(obj, propName, getter, setter, enumerable)
+{
+	if (conbo.isAccessor(obj, propName))
+	{
+		return this;
+	}
+	
+	var value = obj[propName],
+		nogs = !getter && !setter;
+	
+	enumerable = (enumerable !== false);
+		
+	if (nogs)
+	{
+		getter = function()
+		{
+			return value;
+		};
+	
+		setter = function(newValue)
+		{
+			if (newValue === value) return;
+			value = newValue;
+			
+			_dispatchChange(this, propName, value);
+		};
+	}
+	else if (!!setter)
+	{
+		setter = conbo.wrap(setter, function(fn, newValue)
+		{
+			fn.call(this, newValue);
+			_dispatchChange(this, propName, obj[propName]);
+		});
+		
+		setter.bindable = true;
+	}
+	
+	Object.defineProperty(obj, propName, {enumerable:enumerable, configurable:true, get:getter, set:setter});
+	
+	return this;
+};
+
+/**
+ * Define property that can't be enumerated
+ */
+var _defineIncalculableProperty = function(obj, propName, value)
+{
+	Object.defineProperty(obj, propName, {enumerable:false, configurable:true, writable:true, value:value});
+	return this;
+};
+
+/**
+ * Convert all enumerable properties of the specified object into non-enumerable ones
+ */
+var _denumerate = function(obj)
+{
+	var props = arguments.length > 1
+		? conbo.rest(arguments)
+		: conbo.keys(obj);
+	
+	props.forEach(function(propName)
+	{
+		var descriptor = Object.getOwnPropertyDescriptor(obj, propName) 
+			|| {value:obj[propName], configurable:true, writable:true};
+		
+		descriptor.enumerable = false;
+		
+		Object.defineProperty(obj, propName, descriptor);
+	});
+	
+	return this;
 };
 
 /*
@@ -188,15 +1771,6 @@ conbo.Class.prototype =
 	initialize: function() {},
 	
 	/**
-	 * Calls the specified function after the current call stack has cleared
-	 */
-	callLater: function(callback)
-	{
-		_.defer(this.proxy.apply(this, [callback].concat(_.rest(arguments))));
-		return this;
-	},
-	
-	/**
 	 * Calls the specified method on the _super object, scoped to this
 	 * @param 	methodName		String
 	 * @param	...				Zero or more additional parameters
@@ -204,44 +1778,15 @@ conbo.Class.prototype =
 	callSuper: function(methodName)
 	{
 		if (!this._super[methodName]) return undefined;
-		return this._super[methodName].apply(this, _.rest(arguments));
+		return this._super[methodName].apply(this, conbo.rest(arguments));
 	},
 	
 	/**
-	 * Creates an AS3-style accessor when using an ECMAScript 5 compliant browser
-	 * (Latest Chrome, Firefox, Safari and IE9+)
+	 * Calls the specified function after the current call stack has cleared
 	 */
-	defineProperty: function(name, getter, setter, initialValue)
+	defer: function(callback)
 	{
-		if (!('defineProperty' in Object)) throw new Error('Object.defineProperty is not supported by the current browser');
-		
-		getter = getter || function() { return this['_'+name]; };
-		setter = setter || function(value) { this['_'+name] = value; };
-		
-		Object.defineProperty(this, name, {enumerable:true, configurable:true, get:getter, set:setter});
-		if (initialValue !== undefined) this[name] = initialValue;
-		return this;
-	},
-	
-	/**
-	 * Creates a jQuery style, chainable property accessor
-	 * @example		obj.x(123).y(456).visible(true);
-	 */
-	defineAccessor: function(name, getter, setter, initialValue)
-	{
-		getter || (getter = function() { return this['_'+name]; });
-		setter || (setter = function(value) { this['_'+name] = value; return this; });
-		
-		this[name] = function()
-		{
-			return (!!arguments.length ? setter : getter).apply(this, arguments);
-		};
-		
-		if (initialValue !== undefined)
-		{
-			this[name](initialValue);
-		}
-		
+		conbo.defer(this.bind.apply(this, [callback].concat(conbo.rest(arguments))));
 		return this;
 	},
 	
@@ -250,18 +1795,18 @@ conbo.Class.prototype =
 	 * @param 	method
 	 * @returns
 	 */
-	proxy: function(method)
+	bind: function(method)
 	{
-		return _.bind.apply(_, [method, this].concat(_.rest(arguments)));
+		return conbo.bind.apply(_, [method, this].concat(conbo.rest(arguments)));
 	},
 	
 	/**
 	 * Scope all methods of this class instance to this class instance
 	 * @returns this
 	 */
-	proxyAll: function()
+	bindAll: function()
 	{
-		_.bindAll.apply(_, [this].concat(_.toArray(arguments)))
+		conbo.bindAll.apply(_, [this].concat(conbo.toArray(arguments)))
 		return this;
 	},
 	
@@ -272,20 +1817,22 @@ conbo.Class.prototype =
 		
 };
 
+_denumerate(conbo.Class.prototype);
+
 conbo.Class.extend = function(protoProps, staticProps)
 {
 	var child, parent=this;
 	
 	/**
 	 * The constructor function for the new subclass is either defined by you
-	 * (the "constructor" property in your `extend` definition), or defaulted
+	 * (the 'constructor' property in your `extend` definition), or defaulted
 	 * by us to simply call the parent's constructor.
 	 */
-	child = protoProps && _.has(protoProps, 'constructor')
+	child = protoProps && conbo.has(protoProps, 'constructor')
 		? protoProps.constructor
-		: function(){ return parent.apply(this, arguments); };
+		: function() { return parent.apply(this, arguments); };
 	
-	_.extend(child, parent, staticProps);
+	conbo.extend(child, parent, staticProps);
 	
 	/**
 	 * Set the prototype chain to inherit from parent, without calling
@@ -295,54 +1842,71 @@ conbo.Class.extend = function(protoProps, staticProps)
 	Surrogate.prototype = parent.prototype;
 	child.prototype = new Surrogate;
 	
-	if (protoProps) _.extend(child.prototype, protoProps);
-	child.prototype._super = parent.prototype;
+	if (protoProps)
+	{
+		conbo.extend(child.prototype, protoProps);
+	}
+	
+	conbo.bindProperties(child.prototype);
 	
 	return child;
 };
 
 /**
+ * Implements the specified pseudo-interface(s) on the class, copying 
+ * the default methods or properties from the partial(s) if they have 
+ * not already been implemented.
+ * 
+ * @example					var MyClass = conbo.Class.extend().implement(conbo.Injectable);
+ * @param	{Object}		Object containing one or more properties or methods to be implemented
+ * @returns	{conbo.Class}
+ */
+conbo.Class.implement = function()
+{
+	conbo.defaults.apply(conbo, conbo.union([this.prototype], arguments));
+	return this;
+};
+
+/**
+ * Interface class for data renderers, for example an item renderer for
+ * use with the cb-repeat attribute
+ * 
+ * @author Neil Rackett
+ */
+conbo.IDataRenderer =
+{
+	data: undefined
+}
+/**
  * Injectable
  * 
- * Base class that enables the Conbo.js framework to add context to this 
- * class instance and inject specified dependencies (properties of undefined
- * value which match registered singletons)
+ * Partial class that enables the Conbo.js framework to add the Context class 
+ * to inject specified dependencies (properties of undefined value which match 
+ * registered singletons); should be used via the Class.implement method
  * 
+ * @example		var C = conbo.Class.extend().implement(conbo.Injectable);
  * @author		Neil Rackett
  */
-conbo.Injectable = conbo.Class.extend
-({
-	constructor: function(options)
+
+conbo.Injectable =
+{
+	get context()
 	{
-		this._inject(options);
-		this.initialize.apply(this, arguments);
+		return this.__context__;
 	},
 	
-	toString: function()
+	set context(value)
 	{
-		return 'conbo.Injectable';
-	},
-	
-	/**
-	 * Inject
-	 * @private
-	 */
-	_inject: function(options)
-	{
-		options || (options = {});
+		if (value == this.__context__) return;
 		
-		this.context = _.result(this, 'context') || options.context;
-		
-		if (!!this.context) 
+		if (value instanceof conbo.Context) 
 		{
-			this.context.injectSingletons(this);
+			value.injectSingletons(this);
 		}
 		
-		return this;
+		this.__context__ = value;
 	}
-	
-});
-
+};
 /**
  * Event class
  * 
@@ -366,8 +1930,8 @@ conbo.Event = conbo.Class.extend
 	 */
 	constructor: function(type)
 	{
-		if (_.isString(type)) this.type = type;
-		else _.defaults(this, type);
+		if (conbo.isString(type)) this.type = type;
+		else conbo.defaults(this, type);
 		
 		if (!this.type) throw new Error('Invalid or undefined event type');
 		
@@ -386,7 +1950,7 @@ conbo.Event = conbo.Class.extend
 	 */
 	clone: function()
 	{
-		return _.clone(this);
+		return conbo.clone(this);
 	},
 	
 	/**
@@ -431,7 +1995,7 @@ conbo.Event = conbo.Class.extend
 		
 		for (var a in this)
 		{
-			if (!_.isString(this[a]) || this[a] == this.ALL) continue;
+			if (!conbo.isString(this[a]) || this[a] == this.ALL) continue;
 			types.push(this[a]);
 		}
 		
@@ -439,6 +2003,8 @@ conbo.Event = conbo.Class.extend
 		return types.join(' ');
 	}
 });
+
+_denumerate(conbo.Event.prototype);
 
 /**
  * conbo.Event
@@ -454,7 +2020,7 @@ conbo.ConboEvent = conbo.Event.extend
 ({
 	initialize: function(type, options)
 	{
-		_.defaults(this, options);
+		conbo.defaults(this, options);
 	},
 	
 	toString: function()
@@ -481,9 +2047,12 @@ conbo.ConboEvent = conbo.Event.extend
 							// "route:[name]" // (Properties: params) � Fired by the router when a specific route is matched.
 	
 	TEMPLATE_LOADED:	"templateloaded",
+	ELEMENT_CHANGE:		"elementchange",
 	
 	ALL:		"all", 		// special event fires for any triggered event
 });
+
+_denumerate(conbo.ConboEvent.prototype);
 
 /**
  * Event Dispatcher
@@ -496,38 +2065,18 @@ conbo.ConboEvent = conbo.Event.extend
  * data binding
  * 
  * @author	Neil Rackett
- * @see		conbo.Bindable
+ * @see		conbo.EventDispatcher
  */
-conbo.EventDispatcher = conbo.Injectable.extend
+conbo.EventDispatcher = conbo.Class.extend
 ({
 	/**
-	 * Dispatch the event to listeners
-	 * @param event		conbo.Event class instance or event type (e.g. 'change')
+	 * Do not override: use initialize
+	 * @private
 	 */
-	trigger: function(event)
+	constructor: function(options)
 	{
-		if (!event) throw new Error('Event undefined');
-		
-		if (_.isString(event) || !(event instanceof conbo.Event)) 
-			event = new conbo.Event(event);
-		
-		if (!this._queue || (!(event.type in this._queue) && !this._queue.all)) return this;
-		
-		if (!event.target) event.target = this;
-		event.currentTarget = this;
-		
-		var queue = _.union(this._queue[event.type] || [], this._queue.all || []);
-		if (!queue || !queue.length) return this;
-		
-		for (var i=0, length=queue.length; i<length; ++i)
-		{
-			var value = queue[i];
-			var returnValue = value.handler.call(value.scope || this, event);
-			if (value.once) this._off(event.type, value.handler, value.scope);
-			if (returnValue === false || event.immediatePropagationStopped) break;
-		}
-		
-		return this;
+		this.initialize.apply(this, arguments);
+		conbo.bindProperties(this, this.bindable);
 	},
 	
 	/**
@@ -535,31 +2084,14 @@ conbo.EventDispatcher = conbo.Injectable.extend
 	 * @param type		Type of event ('change') or events ('change blur')
 	 * @param handler	Function that should be called
 	 */
-	on: function(type, handler, scope, priority)
+	addEventListener: function(type, handler, scope, priority, once)
 	{
 		if (!type) throw new Error('Event type undefined');
-		if (!handler || !_.isFunction(handler)) throw new Error('Event handler is undefined or not a function');
+		if (!handler || !conbo.isFunction(handler)) throw new Error('Event handler is undefined or not a function');
 
-		if (_.isString(type)) type = type.split(' ');
-		if (_.isArray(type)) _.each(type, function(value, index, list) { this._on(value, handler, scope, priority, false); }, this);
-		else _.each(type, function(value, key, list) { this._on(key, value, scope, priority, false); }, this); 
-		
-		return this;
-	},
-	
-	/**
-	 * Add a listener for a particular event type that fires once, then removes itself
-	 * @param type		Type of event ('change') or events ('change blur')
-	 * @param handler	Function that should be called
-	 */
-	one: function(type, handler, scope, priority)
-	{
-		if (!type) throw new Error('Event type undefined');
-		if (!handler || !_.isFunction(handler)) throw new Error('Event handler is undefined or not a function');
-		
-		if (_.isString(type)) type = type.split(' ');
-		if (_.isArray(type)) _.each(type, function(value, index, list) { this._on(value, handler, scope, priority, true); }, this);
-		else _.each(type, function(value, key, list) { this._on(key, value, scope, priority, true); }, this); 
+		if (conbo.isString(type)) type = type.split(' ');
+		if (conbo.isArray(type)) conbo.each(type, function(value, index, list) { this._addEventListener(value, handler, scope, priority, !!once); }, this);
+		else conbo.each(type, function(value, key, list) { this._addEventListener(key, value, scope, priority, !!once); }, this); 
 		
 		return this;
 	},
@@ -570,11 +2102,11 @@ conbo.EventDispatcher = conbo.Injectable.extend
 	 * @param handler	Function that should be called
 	 * @param scope	The scope
 	 */
-	off: function(type, handler, scope)
+	removeEventListener: function(type, handler, scope)
 	{
 		if (!arguments.length)
 		{
-			this._queue = {};
+			this.__queue__ = {};
 			return this;
 		}
 		
@@ -583,49 +2115,83 @@ conbo.EventDispatcher = conbo.Injectable.extend
 		
 		var a = arguments;
 		
-		if (_.isString(type)) type = type.split(' ');
-		if (_.isArray(type)) _.each(type, function(value, index, list) { this._off.apply(this, a); }, this);
-		else _.each(type, function(value, key, list) { this._off.apply(this, a); }, this);
+		if (conbo.isString(type)) type = type.split(' ');
+		if (conbo.isArray(type)) conbo.each(type, function(value, index, list) { this._removeEventListener.apply(this, a); }, this);
+		else conbo.each(type, function(value, key, list) { this._removeEventListener.apply(this, a); }, this);
 		
 		return this;
 	},
 	
-	toString: function()
+	/**
+	 * Dispatch the event to listeners
+	 * @param event		conbo.Event class instance or event type (e.g. 'change')
+	 */
+	dispatchEvent: function(event)
 	{
-		return 'conbo.EventDispatcher';
+		if (!event) throw new Error('Event undefined');
+		
+		var isString = conbo.isString(event);
+		
+		if (isString)
+		{
+			console.warn('Use of dispatchEvent("'+event+'") is deprecated, please use dispatchEvent(new conbo.Event("'+event+'"))');
+		}
+		
+		if (isString || !(event instanceof conbo.Event))
+		{
+			event = new conbo.Event(event);
+		}
+		
+		if (!this.__queue__ || (!(event.type in this.__queue__) && !this.__queue__.all)) return this;
+		
+		if (!event.target) event.target = this;
+		event.currentTarget = this;
+		
+		var queue = conbo.union(this.__queue__[event.type] || [], this.__queue__.all || []);
+		if (!queue || !queue.length) return this;
+		
+		for (var i=0, length=queue.length; i<length; ++i)
+		{
+			var value = queue[i];
+			var returnValue = value.handler.call(value.scope || this, event);
+			if (value.once) this._removeEventListener(event.type, value.handler, value.scope);
+			if (returnValue === false || event.immediatePropagationStopped) break;
+		}
+		
+		return this;
 	},
 	
-	// Aliases
-	dispatchEvent: function() { this.trigger.apply(this, arguments); },
-	addEventListener: function() { this.on.apply(this, arguments); },
-	removeEventListener: function() { this.off.apply(this, arguments); },
+	dispatchChange: function(propName)
+	{
+		_dispatchChange(this, propName);
+	},
 	
 	/**
 	 * @private
 	 */
-	_on: function(type, handler, scope, priority, once)
+	_addEventListener: function(type, handler, scope, priority, once)
 	{
 		if (type == '*') type = 'all';
-		if (!this._queue) this._queue = {};
-		this._off(type, handler, scope);
+		if (!this.__queue__) _defineIncalculableProperty(this, '__queue__', {});
+		this._removeEventListener(type, handler, scope);
 		
-		if (!(type in this._queue)) this._queue[type] = [];
-		this._queue[type].push({handler:handler, scope:scope, once:once, priority:priority||0});
-		this._queue[type].sort(function(a,b){return b.priority-a.priority});
+		if (!(type in this.__queue__)) this.__queue__[type] = [];
+		this.__queue__[type].push({handler:handler, scope:scope, once:once, priority:priority||0});
+		this.__queue__[type].sort(function(a,b){return b.priority-a.priority});
 	},
 	
 	/**
 	 * @private
 	 */
-	_off: function(type, handler, scope)
+	_removeEventListener: function(type, handler, scope)
 	{
-		if (!this._queue || !(type in this._queue)) return this;
+		if (!this.__queue__ || !(type in this.__queue__)) return this;
 		
-		var queue = this._queue[type];
+		var queue = this.__queue__[type];
 		
 		if (arguments.length == 1)
 		{
-			delete this._queue[type];
+			delete this.__queue__[type];
 			return this;
 		}
 		
@@ -641,33 +2207,17 @@ conbo.EventDispatcher = conbo.Injectable.extend
 		}
 		
 		return this;
-	}
-});
-
-/**
- * Bindable
- * 
- * Base class for anything that you want to be able to use as a data provider for HTML,
- * e.g. as part of a View, or otherwise be able to track property changes on
- * 
- * By default, classes extending Bindable will trigger 'change:[property name]' and 
- * 'change' events when a property (including jQuery-style accessors) is changed
- * via the set(...) method
- * 
- * @author		Neil Rackett
- */
-conbo.Bindable = conbo.EventDispatcher.extend
-({
+	},
+	
 	/**
 	 * Get the value of a property
 	 * @param	attribute
 	 * @example	instance.get('n');
 	 * @returns
 	 */
-	get: function(attribute)
+	get: function(propName)
 	{
-		var a = _.result(this, '_attributes');
-		return _.result(a, attribute);
+		return this[propName];
 	},
 	
 	/**
@@ -676,83 +2226,88 @@ conbo.Bindable = conbo.EventDispatcher.extend
 	 * Event handlers, in line with conbo.Model change:[propertyName] handlers, 
 	 * should be in the format handler(source, value) {...}
 	 * 
-	 * @param 	attributes
+	 * @param 	attribute
 	 * @param 	value
 	 * @param 	options
 	 * @example	instance.set('n', 123);
 	 * @example	instance.set({n:123, s:'abc'});
 	 * @returns	this
 	 */
-	set: function(attributes, value, options)
+	set: function(propName, value)
 	{
-		if (_.isObject(attributes))
+		if (conbo.isObject(propName))
 		{
-			_.each(attributes, function(value, key) { this.set(key, value, options); }, this);
+			conbo.each(propName, function(value, key) { this.set(key, value); }, this);
 			return this;
 		}
 		
-		var a = _.result(this, '_attributes'),
-			changed = false;
-		
-		options || (options = {silent:false});
-		
-		if (options.unset)
+		if (this[propName] === value)
 		{
-			changed = (attributes in a);
-			delete a[attributes];
-		}
-		else if (_.isFunction(a[attributes]))
-		{
-			if (a[attributes]() !== value)
-			{
-				a[attributes](value);
-				changed = true;
-			}
-		}
-		else if (a[attributes] != value)
-		{
-			a[attributes] = value;
-			changed = true;
+			return this;
 		}
 		
-		if (changed && !options.silent)
+		this[propName] = value;
+		
+		// We're assuming accessors will dispatch their own change events
+		if (!conbo.isAccessor(this, propName))
 		{
-			var options = {attribute:attributes, value:value, options:options};
-			
-			this.trigger(new conbo.ConboEvent('change:'+attributes, options));
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.CHANGE, options));
+			_dispatchChange(this, propName);
 		}
 		
 		return this;
 	},
 	
-	/**
-	 * Delete a property and dispatch a change:[propertyName] event
-	 * @param 	value
-	 * @returns	this
-	 */
-	unset: function(value, options)
-	{
-		options = _.defaults({unset:true}, options);
-		return this.set(value, undefined, options);
-	},
+//	/**
+//	 * Delete a property and dispatch a change:[propertyName] event
+//	 * @param 	value
+//	 * @returns	this
+//	 */
+//	unset: function(attribute)
+//	{
+//		delete this[attribute];
+//		this.dispatchChangeEvent(attribute)
+//		return this;
+//	},
 	
 	toString: function()
 	{
-		return 'conbo.Bindable';
-	},
+		return 'conbo.EventDispatcher';
+	}	
 	
-	/**
-	 * The object containing the properties you can get/set,
-	 * which defaults to this
-	 * 
-	 * @returns	Object
-	 */
-	_attributes: function()
-	{
-		return this;
-	}
 });
+
+//(function()
+//{
+//	var value;
+//	
+//	Object.defineProperty
+//	(
+//		conbo.Injectable.prototype,
+//		'bindable',
+//		
+//		{
+//			configurable: true,
+//			enumerable: false,
+//			
+//			get: function()
+//			{
+//				return value;
+//			},
+//			
+//			set: function(newValue)
+//			{
+//				if (!newValue || newValue == value) return;
+//				
+//				value = newValue;
+//				conbo.bindable.apply(conbo, [this].concat(newValue));
+//			}
+//		}
+//	);
+//	
+//})();
+
+_defineIncalculableProperty(conbo.EventDispatcher.prototype, 'bindable');
+_denumerate(conbo.EventDispatcher.prototype);
 
 /**
  * conbo.Context
@@ -771,17 +2326,17 @@ conbo.Context = conbo.EventDispatcher.extend
 	 */
 	constructor: function(options)
 	{
-		options = options || {};
+		options || (options = {});
 		
-		this._commands = {};
-		this._singletons = {};
+		_defineIncalculableProperty(this, '__commands__', {});
+		_defineIncalculableProperty(this, '__singletons__', {});
 		
 		this.app = options.app;
 		
-		this.on(conbo.Event.ALL, this._allHandler);
+		this.addEventListener(conbo.Event.ALL, this._allHandler);
 		this.initialize.apply(this, arguments);
 		
-		return this;
+		conbo.bindProperties(this, this.bindable);
 	},
 	
 	/**
@@ -800,13 +2355,13 @@ conbo.Context = conbo.EventDispatcher.extend
 		
 		if (this._mapMulti(eventType, commandClass, this.mapCommand)) return;
 		
-		if (this._commands[eventType] && this._commands[eventType].indexOf(commandClass) != -1)
+		if (this.__commands__[eventType] && this.__commands__[eventType].indexOf(commandClass) != -1)
 		{
 			return;
 		}
 		
-		this._commands[eventType] = this._commands[eventType] || [];
-		this._commands[eventType].push(commandClass);
+		this.__commands__[eventType] = this.__commands__[eventType] || [];
+		this.__commands__[eventType].push(commandClass);
 		
 		return this;
 	},
@@ -821,14 +2376,14 @@ conbo.Context = conbo.EventDispatcher.extend
 		
 		if (commandClass === undefined)
 		{
-			delete this._commands[eventType];
+			delete this.__commands__[eventType];
 			return;
 		}
 		
-		if (!this._commands[eventType]) return;
-		var index = this._commands[eventType].indexOf(commandClass);
+		if (!this.__commands__[eventType]) return;
+		var index = this.__commands__[eventType].indexOf(commandClass);
 		if (index == -1) return;
-		this._commands[eventType].splice(index, 1);
+		this.__commands__[eventType].splice(index, 1);
 		
 		return this;
 	},
@@ -841,7 +2396,7 @@ conbo.Context = conbo.EventDispatcher.extend
 	 * class to 'use inject' 
 	 * 
 	 * @example		context.mapSingleton('myProperty', MyModel);
-	 * @example		myProperty: 'use inject'
+	 * @example		myProperty: undefined
 	 */
 	mapSingleton: function(propertyName, singletonClass)
 	{
@@ -850,7 +2405,7 @@ conbo.Context = conbo.EventDispatcher.extend
 		
 		if (this._mapMulti(propertyName, singletonClass, this.mapSingleton)) return;
 		
-		this._singletons[propertyName] = conbo.isClass(singletonClass)
+		this.__singletons__[propertyName] = conbo.isClass(singletonClass)
 			// TODO Improved dynamic class instantiation
 			? new singletonClass(arguments[2], arguments[3], arguments[4])
 			: singletonClass;
@@ -866,8 +2421,8 @@ conbo.Context = conbo.EventDispatcher.extend
 		if (!propertyName) throw new Error('propertyName cannot be undefined');
 		if (this._mapMulti(propertyName, null, this.unmapSingleton)) return;
 		
-		if (!this._singletons[propertyName]) return;
-		delete this._singletons[propertyName];
+		if (!this.__singletons__[propertyName]) return;
+		delete this.__singletons__[propertyName];
 		
 		return this;
 	},
@@ -877,7 +2432,7 @@ conbo.Context = conbo.EventDispatcher.extend
 	 */
 	addTo: function(obj)
 	{
-		return _.extend(obj || {}, {context:this});
+		return conbo.extend(obj || {}, {context:this});
 	},
 	
 	/**
@@ -889,9 +2444,9 @@ conbo.Context = conbo.EventDispatcher.extend
 		{
 			if (obj[a] !== undefined) continue;
 			
-			if (a in this._singletons)
+			if (a in this.__singletons__)
 			{
-				obj[a] = this._singletons[a];
+				obj[a] = this.__singletons__[a];
 			}
 		}
 		
@@ -908,10 +2463,10 @@ conbo.Context = conbo.EventDispatcher.extend
 	 */
 	_allHandler: function(event)
 	{
-		var commands = _.union(this._commands.all || [], this._commands[event.type] || []);
+		var commands = conbo.union(this.__commands__.all || [], this.__commands__[event.type] || []);
 		if (!commands.length) return;
 		
-		_.each(commands, function(commandClass, index, list)
+		conbo.each(commands, function(commandClass, index, list)
 		{
 			this._executeCommand(commandClass, event);
 		}, 
@@ -939,13 +2494,15 @@ conbo.Context = conbo.EventDispatcher.extend
 	 */
 	_mapMulti: function(n, c, f)
 	{
-		if (_.isArray(n) || n.indexOf(' ') == -1) return false;
-		var names = _.isArray(n) ? n : n.split(' ');
-		_.each(names, function(e) { f(e,c); }, this);
+		if (conbo.isArray(n) || n.indexOf(' ') == -1) return false;
+		var names = conbo.isArray(n) ? n : n.split(' ');
+		conbo.each(names, function(e) { f(e,c); }, this);
 		return true;
 	}
 	
 });
+
+_denumerate(conbo.Context.prototype);
 
 /**
  * conbo.Hash
@@ -959,48 +2516,57 @@ conbo.Context = conbo.EventDispatcher.extend
  * @author		Neil Rackett
  */
 
-conbo.Hash = conbo.Bindable.extend
+conbo.Hash = conbo.EventDispatcher.extend
 ({
 	/**
 	 * Constructor: DO NOT override! (Use initialize instead)
 	 * @param options
 	 */
-	constructor: function(attributes, options)
+	constructor: function(properties, options)
 	{
-		this._inject(options);
-		this._attributes = _.defaults({}, attributes, _.result(this, 'defaults'));
+		if (!!options) this.context = options.context;
+		
+		conbo.defaults(this, properties, this.defaults)		
+		_defineIncalculableProperty(this, '__properties__', this);
+		
 		this.initialize.apply(this, arguments);
+		
+		conbo.bindProperties.apply(conbo, [this].concat(this.bindable || []));
 	},
 	
 	/**
-	 * Returns an object ready to be converted to JSON
-	 * TODO Ensure we return only user's props and accessors (converted to props)
-	 * @returns
+	 * Return an object that can easily be converted into JSON
 	 */
 	toJSON: function()
 	{
-		return _.clone(this._attributes);
+		var keys = conbo.keys(this.__properties__),
+			filter = function(value) { return String(value).indexOf('_') != 0; };
+		
+		return conbo.pick(this.__properties__, conbo.filter(keys, filter));
 	},
 	
 	toString: function()
 	{
 		return 'conbo.Hash';
 	}
-});
+	
+}).implement(conbo.Injectable);
 
 //Underscore methods that we want to implement on the Model.
 var hashMethods = ['keys', 'values', 'pairs', 'invert', 'pick', 'omit', 'size'];
 
 //Mix in each available Lo-Dash/Underscore method as a proxy to `Model#attributes`.
-_.each(hashMethods, function(method)
+conbo.each(hashMethods, function(method)
 {
-	if (!(method in _)) return;
+	if (!(method in conbo)) return;
 	
 	conbo.Hash.prototype[method] = function() 
 	{
-		return _[method].apply(_, [this._attributes].concat(_.rest(arguments)));
+		return conbo[method].apply(conbo, [this.__properties__].concat(conbo.rest(arguments)));
 	};
 });
+
+_denumerate(conbo.Hash.prototype);
 
 /**
  * List
@@ -1022,13 +2588,14 @@ conbo.List = conbo.EventDispatcher.extend
 	{
 		options || (options = {});
 		
-		this.proxyAll('_redispatch');
+		this.bindAll('_redispatch');
 		this.length = 0;
 		
 		this._models = (models || []).slice();
-		this._inject(options);
+		this.context = options.context;
 		
 		this.initialize.apply(this, arguments);
+		conbo.bindProperties(this, this.bindable);
 	},
 	
 	/**
@@ -1052,8 +2619,8 @@ conbo.List = conbo.EventDispatcher.extend
 	push: function(model)
 	{
 		this.length = this._models.push.apply(this._models, arguments);
-		this._handleChange(_.toArray(arguments));
-		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+		this._handleChange(conbo.toArray(arguments));
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ADD));
 		
 		return this.length;
 	},
@@ -1069,7 +2636,7 @@ conbo.List = conbo.EventDispatcher.extend
 		
 		this._handleChange(model, false);
 		this.length = this._models.length;
-		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
 		
 		return model;
 	},
@@ -1080,8 +2647,8 @@ conbo.List = conbo.EventDispatcher.extend
 	unshift: function(model) 
 	{
 		this.length = this._models.unshift.apply(this._models, arguments);
-		this._handleChange(_.toArray(arguments));
-		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+		this._handleChange(conbo.toArray(arguments));
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ADD));
 		
 		return this.length;
 	},
@@ -1097,7 +2664,7 @@ conbo.List = conbo.EventDispatcher.extend
 		
 		this._handleChange(model = this._models.shift(), false);
 		this.length = this._models.length;
-		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
 		
 		return model;
 	},
@@ -1115,13 +2682,13 @@ conbo.List = conbo.EventDispatcher.extend
 	 */
 	splice: function(begin, length)
 	{
-		var inserts = _.rest(arguments,2).length;
+		var inserts = conbo.rest(arguments,2).length;
 		
 		var models = this._models.splice(begin, length, inserts);
 		this.length = this._models.length;
 		
-		if (models.length) this.trigger(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
-		if (inserts.length) this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+		if (models.length) this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.REMOVE));
+		if (inserts.length) this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ADD));
 		
 		return models;
 	},
@@ -1149,10 +2716,10 @@ conbo.List = conbo.EventDispatcher.extend
 		if (this._models.length > this.length)
 		{
 			this.length = this._models.length;
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD));
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ADD));
 		}
 		
-		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.CHANGE, {model:model}));
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.CHANGE, {model:model}));
 		
 		return replaced;
 	},
@@ -1173,7 +2740,7 @@ conbo.List = conbo.EventDispatcher.extend
 	sort: function(compareFunction) 
 	{
 		this._models.sort(compareFunction);
-		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.SORT));
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.SORT));
 		
 		return this;
 	},
@@ -1200,13 +2767,13 @@ conbo.List = conbo.EventDispatcher.extend
 	{
 		var method = enabled === false ? 'off' : 'on'
 		
-		models = (_.isArray(models) ? models : [models]).slice();
+		models = (conbo.isArray(models) ? models : [models]).slice();
 		
 		while (models.length)
 		{
 			var model = models.pop();
 			
-			if (model instanceof conbo.Bindable)
+			if (model instanceof conbo.EventDispatcher)
 			{
 				model[method](conbo.ConboEvent.CHANGE, this._redispatch);
 			}
@@ -1218,9 +2785,10 @@ conbo.List = conbo.EventDispatcher.extend
 	 */
 	_redispatch: function(event)
 	{
-		this.trigger(event);
+		this.dispatchEvent(event);
 	}
-});
+	
+}).implement(conbo.Injectable);
 
 // Underscore methods that we want to implement on the List.
 var methods = 
@@ -1234,7 +2802,7 @@ var methods =
 ];
 
 // Mix in each available Underscore/Lo-Dash method as a proxy to `Collection#models`.
-_.each(methods, function(method) 
+conbo.each(methods, function(method) 
 {
 	if (!(method in _)) return;
 	
@@ -1250,20 +2818,22 @@ _.each(methods, function(method)
 var attributeMethods = ['groupBy', 'countBy', 'sortBy'];
 
 // Use attributes instead of properties.
-_.each(attributeMethods, function(method)
+conbo.each(attributeMethods, function(method)
 {
-	if (!(method in _)) return;
+	if (!(method in conbo)) return;
 	
 	conbo.List.prototype[method] = function(value, context) 
 	{
-		var iterator = _.isFunction(value) ? value : function(model) 
+		var iterator = conbo.isFunction(value) ? value : function(model) 
 		{
 			return model.get(value);
 		};
 		
-		return _[method](this._models, iterator, context);
+		return conbo[method](this._models, iterator, context);
 	};
 });
+
+_denumerate(conbo.List.prototype);
 
 /**
  * Attribute Bindings
@@ -1411,7 +2981,7 @@ conbo.AttributeBindings = conbo.Class.extend
 	cbRepeat: function(values, el, options, itemRendererClassName)
 	{
 		var a, 
-			args = _.toArray(arguments),
+			args = conbo.toArray(arguments),
 			$el = $(el),
 			viewClass;
 		
@@ -1421,26 +2991,26 @@ conbo.AttributeBindings = conbo.Class.extend
 		}
 		
 		viewClass || (viewClass = conbo.View);
-		el.cbData || (el.cbData = {});
+		el.cbRepeat || (el.cbRepeat = {});
 		
-		elements = el.cbData.elements || [];
+		elements = el.cbRepeat.elements || [];
 		
 		$el.removeClass('cb-exclude');
 		
-		if (el.cbData.list != values && values instanceof conbo.List)
+		if (el.cbRepeat.list != values && values instanceof conbo.List)
 		{
-			if (!!el.cbData.list)
+			if (!!el.cbRepeat.list)
 			{
-				el.cbData.list.off('add remove change', el.cbData.changeHandler);
+				el.cbRepeat.list.removeEventListener('add remove change', el.cbRepeat.changeHandler);
 			}
 			
-			el.cbData.changeHandler = this.proxy(function(event)
+			el.cbRepeat.changeHandler = this.bind(function(event)
 			{
 				this.cbRepeat.apply(this, args);
 			});
 			
-			values.on('add remove change', el.cbData.changeHandler);
-			el.cbData.list = values;
+			values.addEventListener('add remove change', el.cbRepeat.changeHandler);
+			el.cbRepeat.list = values;
 		}
 		
 		switch (true)
@@ -1476,7 +3046,7 @@ conbo.AttributeBindings = conbo.Class.extend
 			}
 			
 			var $clone = $el.clone().removeAttr('cb-repeat'),
-				view = new viewClass(_.extend({model:value, el:$clone}, options));
+				view = new viewClass(conbo.extend({data:value, el:$clone}, options));
 			
 			view.$el.addClass('cb-repeat');
 			
@@ -1484,7 +3054,7 @@ conbo.AttributeBindings = conbo.Class.extend
 		});
 		
 		$el.after(elements);
-		el.cbData.elements = elements;
+		el.cbRepeat.elements = elements;
 		
 		!!elements.length
 			? $el.remove()
@@ -1495,8 +3065,8 @@ conbo.AttributeBindings = conbo.Class.extend
 /**
  * Binding utility class
  * 
- * Used to bind properties of Bindable class instances to DOM elements, 
- * other Bindable class instances or setter functions
+ * Used to bind properties of EventDispatcher class instances to DOM elements, 
+ * other EventDispatcher class instances or setter functions
  * 
  * @author Neil Rackett
  */
@@ -1505,25 +3075,25 @@ conbo.BindingUtils = conbo.Class.extend({},
 	_attrBindings: new conbo.AttributeBindings(),
 	
 	/**
-	 * Bind a property of a Bindable class instance (e.g. Hash or Model) 
+	 * Bind a property of a EventDispatcher class instance (e.g. Hash or Model) 
 	 * to a DOM element's value/content, using Conbo's best judgement to
 	 * work out how the value should be bound to the element.
 	 * 
 	 * This method of binding also allows for the use of a parse function,
 	 * which can be used to manipulate bound data in real time
 	 * 
-	 * @param 		{conbo.Bindable}	source				Class instance which extends from conbo.Bindable (e.g. Hash or Model)
-	 * @param 		{String} 			propertyName		Property name to bind
-	 * @param 		{DOMElement} 		element				DOM element to bind value to (two-way bind on input/form elements)
-	 * @param 		{Function}			parseFunction		Optional method used to parse values before outputting as HTML
+	 * @param 		{conbo.EventDispatcher}	source				Class instance which extends from conbo.EventDispatcher (e.g. Hash or Model)
+	 * @param 		{String} 				propertyName		Property name to bind
+	 * @param 		{DOMElement} 			element				DOM element to bind value to (two-way bind on input/form elements)
+	 * @param 		{Function}				parseFunction		Optional method used to parse values before outputting as HTML
 	 * 
-	 * @returns		{Array}									Array of bindings
+	 * @returns		{Array}										Array of bindings
 	 */
 	bindElement: function(source, propertyName, element, parseFunction)
 	{
-		if (!(source instanceof conbo.Bindable))
+		if (!(source instanceof conbo.EventDispatcher))
 		{
-			throw new Error('Source is not Bindable');
+			throw new Error('Source is not EventDispatcher');
 		}
 		
 		if (!element)
@@ -1563,7 +3133,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 								$el.prop('checked', !!event.value);
 							};
 							
-							source.on(eventType, eventHandler);
+							source.addEventListener(eventType, eventHandler);
 							bindings.push([source, eventType, eventHandler]);
 							
 							eventType = 'input change';
@@ -1591,7 +3161,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 								$el.prop('checked', true);
 							};
 							
-							source.on(eventType, eventHandler);
+							source.addEventListener(eventType, eventHandler);
 							bindings.push([source, eventType, eventHandler]);
 							
 							break;
@@ -1609,7 +3179,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 								$el.val(event.value);
 							};
 							
-							source.on(eventType, eventHandler);
+							source.addEventListener(eventType, eventHandler);
 							bindings.push([source, eventType, eventHandler]);
 							
 							break;
@@ -1641,7 +3211,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 						$el.html(html);
 					};
 					
-					source.on(eventType, eventHandler);
+					source.addEventListener(eventType, eventHandler);
 					bindings.push([source, eventType, eventHandler]);
 					
 					break;
@@ -1654,15 +3224,15 @@ conbo.BindingUtils = conbo.Class.extend({},
 	},
 	
 	/**
-	 * Bind a DOM element to the property of a Bindable class instance,
+	 * Bind a DOM element to the property of a EventDispatcher class instance,
 	 * e.g. Hash or Model, using cb-* attributes to specify how the binding
 	 * should be made.
 	 * 
 	 * Two way bindings will automatically be applied where the attribute name 
-	 * matches a property on the target element, meaning your Bindable object 
+	 * matches a property on the target element, meaning your EventDispatcher object 
 	 * will automatically be updated when the property changes.
 	 * 
-	 * @param 	{conbo.Bindable}	source			Class instance which extends from conbo.Bindable (e.g. Hash or Model)
+	 * @param 	{conbo.EventDispatcher}	source			Class instance which extends from conbo.EventDispatcher (e.g. Hash or Model)
 	 * @param 	{String}			propertyName	Property name to bind
 	 * @param 	{DOMElement}		element			DOM element to bind value to (two-way bind on input/form elements)
 	 * @param 	{String}			attributeName	The cb-* property to bind against in camelCase, e.g. "propName" for "cb-prop-name"
@@ -1694,7 +3264,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 			isNative = false,
 			eventType,
 			eventHandler,
-			args = _.toArray(arguments).slice(5),
+			args = conbo.toArray(arguments).slice(5),
 			camelCase = conbo.toCamelCase('cb-'+attributeName),
 			split = attributeName.split('-');
 		
@@ -1721,9 +3291,9 @@ conbo.BindingUtils = conbo.Class.extend({},
 			// If we have a bespoke handler for this attribute, use it
 			case isConbo:
 			{
-				if (!(source instanceof conbo.Bindable))
+				if (!(source instanceof conbo.EventDispatcher))
 				{
-					throw new Error('Source is not Bindable');
+					throw new Error('Source is not EventDispatcher');
 				}
 				
 				eventHandler = function(event)
@@ -1737,7 +3307,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 				
 				eventType = 'change:'+propertyName;
 				
-				source.on(eventType, eventHandler);
+				source.addEventListener(eventType, eventHandler);
 				eventHandler();
 				
 				bindings.push([source, eventType, eventHandler]);
@@ -1749,16 +3319,16 @@ conbo.BindingUtils = conbo.Class.extend({},
 			{
 				switch (true)
 				{
-					case !attributeName.indexOf('on') == 0 && _.isFunction(element[attributeName]):
+					case !attributeName.indexOf('on') == 0 && conbo.isFunction(element[attributeName]):
 						console.warn('cb-'+attributeName+' is not a recognised attribute, did you mean cb-on'+attributeName+'?');
 						break;
 						
 					// If it's an event, add a listener
 					case attributeName.indexOf('on') == 0:
 					{
-						if (!_.isFunction(source[propertyName]))
+						if (!conbo.isFunction(source[propertyName]))
 						{
-							throw new Error('DOM events can only be bound to functions');
+							throw new Error(propertyName+' is not a function and cannot be bound to DOM events');
 						}
 						
 						$(element).on(attributeName.substr(2), source[propertyName]);
@@ -1768,9 +3338,9 @@ conbo.BindingUtils = conbo.Class.extend({},
 					// ... otherwise, bind to the native property
 					default:
 					{
-						if (!(source instanceof conbo.Bindable))
+						if (!(source instanceof conbo.EventDispatcher))
 						{
-							throw new Error('Source is not Bindable');
+							throw new Error('Source is not EventDispatcher');
 						}
 						
 						eventHandler = function()
@@ -1778,13 +3348,13 @@ conbo.BindingUtils = conbo.Class.extend({},
 							var value;
 							
 							value = parseFunction(source.get(propertyName));
-							value = _.isBoolean(element[attributeName]) ? !!value : value;
+							value = conbo.isBoolean(element[attributeName]) ? !!value : value;
 							
 							element[attributeName] = value;
 						}
 					    
 						eventType = 'change:'+propertyName;
-						source.on(eventType, eventHandler);
+						source.addEventListener(eventType, eventHandler);
 						eventHandler();
 						
 						bindings.push([source, eventType, eventHandler]);
@@ -1820,7 +3390,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 	
 	/**
 	 * Bind everything within the DOM scope of a View to the specified 
-	 * properties of Bindable class instances (e.g. Hash or Model)
+	 * properties of EventDispatcher class instances (e.g. Hash or Model)
 	 * 
 	 * @param 	{conbo.View}		view		The View class controlling the element
 	 * @returns	{this}
@@ -1832,16 +3402,18 @@ conbo.BindingUtils = conbo.Class.extend({},
 			throw new Error('view is undefined');
 		}
 		
-		if (!!view._bindings)
+		if (!!view.__bindings__)
 		{
 			this.unbindView(view);
 		}
 		
-		var options = view.context.addTo({view:view}),
+		var options = {view:view},
 			bindings = [],
 			$nestedViews = view.$('.cb-view, [cb-view], .cb-app, [cb-app]'),
 			$ignored = view.$('[cb-repeat]'),
 			scope = this;
+		
+		if (!!view.context) view.context.addTo(options);
 		
 		view.$('*').add(view.el).filter(function()
 		{
@@ -1859,7 +3431,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 				return;
 			}
 			
-			var keys = _.keys(cbData);
+			var keys = conbo.keys(cbData);
 			
 			keys.forEach(function(key)
 			{
@@ -1881,7 +3453,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 				try
 				{
 					f = !!b[1] ? eval('view.'+scope.cleanPropertyName(b[1])) : undefined;
-					f = _.isFunction(f) ? f : undefined;
+					f = conbo.isFunction(f) ? f : undefined;
 				}
 				catch (e) {}
 				
@@ -1910,7 +3482,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 			
 		});
 		
-		view._bindings = bindings;
+		_defineIncalculableProperty(view, '__bindings__', bindings);
 		
 		return this;
 	},
@@ -1927,12 +3499,12 @@ conbo.BindingUtils = conbo.Class.extend({},
 			throw new Error('view is undefined');
 		}
 		
-		if (!view._bindings || !view._bindings.length)
+		if (!view.__bindings__ || !view.__bindings__.length)
 		{
 			return this;
 		}
 		
-		var bindings = view._bindings;
+		var bindings = view.__bindings__;
 		
 		while (bindings.length)
 		{
@@ -1943,12 +3515,12 @@ conbo.BindingUtils = conbo.Class.extend({},
 				switch (true)
 				{
 					case binding[0] instanceof $:
-					case binding[0] instanceof conbo.EventDispatcher:
 					{
 						binding[0].off(binding[1], binding[2]);
 						break;
 					}
 					
+					case binding[0] instanceof conbo.EventDispatcher:
 					case !!binding[0] && !!binding[0].removeEventListener:
 					{
 						binding[0].removeEventListener(binding[1], binding[2]);
@@ -1968,17 +3540,17 @@ conbo.BindingUtils = conbo.Class.extend({},
 			}
 		}
 		
-		delete view._bindings;
+		delete view.__bindings__;
 		
 		return this;
 	},
 	
 	/**
-	 * Bind the property of one Bindable class instance (e.g. Hash or Model) to another
+	 * Bind the property of one EventDispatcher class instance (e.g. Hash or Model) to another
 	 * 
-	 * @param 	{conbo.Bindable}	source						Class instance which extends conbo.Bindable
+	 * @param 	{conbo.EventDispatcher}	source						Class instance which extends conbo.EventDispatcher
 	 * @param 	{String}			sourcePropertyName			Source property name
-	 * @param 	{any}				destination					Object or class instance which extends conbo.Bindable
+	 * @param 	{any}				destination					Object or class instance which extends conbo.EventDispatcher
 	 * @param 	{String}			destinationPropertyName		Optional (default: sourcePropertyName)
 	 * @param 	{Boolean}			twoWay						Optional (default: false)
 	 * 
@@ -1986,13 +3558,13 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 */
 	bindProperty: function(source, sourcePropertyName, destination, destinationPropertyName, twoWay)
 	{
-		if (!(source instanceof conbo.Bindable)) throw new Error('Source is not Bindable');
+		if (!(source instanceof conbo.EventDispatcher)) throw new Error('Source is not EventDispatcher');
 		
 		destinationPropertyName || (destinationPropertyName = sourcePropertyName);
 		
-		source.on('change:'+sourcePropertyName, function(event)
+		source.addEventListener('change:'+sourcePropertyName, function(event)
 		{
-			if (!(destination instanceof conbo.Bindable))
+			if (!(destination instanceof conbo.EventDispatcher))
 			{
 				destination[destinationPropertyName] = event.value;
 				return;
@@ -2001,7 +3573,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 			destination.set(destinationPropertyName, event.value);
 		});
 		
-		if (twoWay && destination instanceof conbo.Bindable)
+		if (twoWay && destination instanceof conbo.EventDispatcher)
 		{
 			this.bindProperty(destination, destinationPropertyName, source, sourcePropertyName);
 		}
@@ -2010,18 +3582,18 @@ conbo.BindingUtils = conbo.Class.extend({},
 	},
 	
 	/**
-	 * Call a setter function when the specified property of a Bindable 
+	 * Call a setter function when the specified property of a EventDispatcher 
 	 * class instance (e.g. Hash or Model) is changed
 	 * 
-	 * @param 	{conbo.Bindable}	source				Class instance which extends conbo.Bindable
+	 * @param 	{conbo.EventDispatcher}	source				Class instance which extends conbo.EventDispatcher
 	 * @param 	{String}			propertyName
 	 * @param 	{Function}			setterFunction
 	 */
 	bindSetter: function(source, propertyName, setterFunction)
 	{
-		if (!(source instanceof conbo.Bindable)) throw new Error('Source is not Bindable');
+		if (!(source instanceof conbo.EventDispatcher)) throw new Error('Source is not EventDispatcher');
 		
-		if (!_.isFunction(setterFunction))
+		if (!conbo.isFunction(setterFunction))
 		{
 			if (!setterFunction || !(propertyName in setterFunction))
 			{
@@ -2031,7 +3603,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 			setterFunction = setterFunction[propertyName];
 		}
 		
-		source.on('change:'+propertyName, function(event)
+		source.addEventListener('change:'+propertyName, function(event)
 		{
 			setterFunction(event.value);
 		});
@@ -2092,7 +3664,7 @@ conbo.BindingUtils = conbo.Class.extend({},
 	 */
 	_splitAttribute: function(attribute, value)
 	{
-		if (!_.isString(value))
+		if (!conbo.isString(value))
 		{
 			return;
 		}
@@ -2117,26 +3689,12 @@ conbo.BindingUtils = conbo.Class.extend({},
 });
 
 /**
- * isClass utility method
- */
-conbo.isClass = function(value)
-{
-	return !!value && value.prototype instanceof conbo.Class;
-};
-
-conbo.toCamelCase = function(string)
-{
-	return (string || '').replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
-}
-/**
- * View
+ * Glimpse
  * 
- * Creating a conbo.View creates its initial element outside of the DOM,
- * if an existing element is not provided...
- * 
- * Some methods derived from the Backbone.js class of the same name
+ * A lightweight View that has no dependencies, doesn't take any options 
+ * and doesn't support data binding
  */
-conbo.View = conbo.Bindable.extend
+conbo.Glimpse = conbo.EventDispatcher.extend
 ({
 	/**
 	 * Constructor: DO NOT override! (Use initialize instead)
@@ -2144,39 +3702,15 @@ conbo.View = conbo.Bindable.extend
 	 */
 	constructor: function(options)
 	{
-		options = _.clone(options) || {};
+		if (conbo.isObject(options) && !!options.el)
+		{
+			this.setElement(options.el);
+		}
 		
-		this.cid = _.uniqueId('view');
-		
-		this._configure(options);
 		this._ensureElement();
-		this._inject(options);
-		
 		this.initialize.apply(this, arguments);
 		
-		var templateUrl = _.result(this, 'templateUrl'),
-			template;
-		
-		try
-		{
-			template = _.result(this, 'template');
-		}
-		catch (e) {}
-		
-		if (!!templateUrl)
-		{
-			this.loadTemplate(templateUrl);
-		}
-		else
-		{
-			if (!!template && _.isString(template))
-			{
-				this.html(template);
-			}
-			
-			this.render();
-			this.bindView();
-		}
+		conbo.bindProperties(this, this.bindable);
 	},
 	
 	/**
@@ -2189,15 +3723,6 @@ conbo.View = conbo.Bindable.extend
 	 * initialization logic.
 	 */
 	initialize: function(){},
-	
-	/**
-	 * jQuery delegate for element lookup, scoped to DOM elements within the
-	 * current view. This should be prefered to global lookups where possible.
-	 */
-	$: function(selector)
-	{
-		return this.$el.find(selector);
-	},
 	
 	/**
 	 * Your class should override **render**, which is called automatically 
@@ -2216,13 +3741,123 @@ conbo.View = conbo.Bindable.extend
 	},
 	
 	/**
+	 * Change the view's element (`this.el` property)
+	 */
+	setElement: function(element)
+	{
+		if (!!this.el) delete this.el.cbView;
+		
+		_defineIncalculableProperty(this, 'el', element);
+		
+		this.el.cbView = this;
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ELEMENT_CHANGE));
+		
+		return this;
+	},
+	
+	toString: function()
+	{
+		return 'conbo.Glimpse';
+	},
+	
+	/**
+	 * Ensure that the View has a DOM element to render into.
+	 * If `this.el` is a string, pass it through `$()`, take the first
+	 * matching element, and re-assign it to `el`. Otherwise, create
+	 * an element from the `id`, `className` and `tagName` properties.
+	 * 
+	 * @private
+	 */
+	_ensureElement: function() 
+	{
+		if (!this.el) 
+		{
+			var attrs = conbo.extend({}, this.attributes);
+			var el = document.createElement(this.tagName);
+			
+			if (!!this.id) el.id = this.id;
+			if (!!this.className) el.className = this.className;
+			
+			conbo.extend(el, attrs);
+			
+			this.setElement(el);
+		}
+		else 
+		{
+			this.setElement(this.el);
+			if (!!this.className) this.el.className += ' '+this.className;
+		}
+	},
+	
+}).implement(conbo.Injectable);
+
+_denumerate(conbo.Glimpse.prototype);
+
+/**
+ * View
+ * 
+ * Creating a conbo.View creates its initial element outside of the DOM,
+ * if an existing element is not provided...
+ * 
+ * Some methods derived from the Backbone.js class of the same name
+ */
+conbo.View = conbo.Glimpse.extend
+({
+	/**
+	 * Constructor: DO NOT override! (Use initialize instead)
+	 * @param options
+	 */
+	constructor: function(options)
+	{
+		options = conbo.clone(options) || {};
+		
+		var viewOptions = ['data', 'el', 'id', 'attributes', 'className', 'tagName', 'template', 'templateUrl'];	
+		conbo.extend(this, conbo.pick(options, viewOptions));
+		
+		this._ensureElement();
+		
+		this.context = options.context;
+		
+ 		this.initialize.apply(this, arguments);
+ 		
+		conbo.bindProperties(this, this.bindable);
+		
+		var templateUrl = this.templateUrl,
+			template = this.template;
+		
+		if (!!templateUrl)
+		{
+			this.loadTemplate(templateUrl);
+		}
+		else
+		{
+			if (!!template && conbo.isString(template))
+			{
+				this.$el.html(template);
+			}
+			
+			this.render();
+			this.bindView();
+		}
+	},
+	
+	/**
+	 * jQuery delegate for element lookup, scoped to DOM elements within the
+	 * current view. This should be prefered to global lookups where possible.
+	 */
+	$: function(selector)
+	{
+		return this.$el.find(selector);
+	},
+	
+	/**
 	 * Remove this view by taking the element out of the DOM, and removing any
 	 * applicable events listeners.
 	 */
 	remove: function() 
 	{
 		this.unbindView()
-			.off();
+			.removeEventListener();
 		
 		this.$el.remove();
 		
@@ -2234,25 +3869,21 @@ conbo.View = conbo.Bindable.extend
 	 */
 	setElement: function(element)
 	{
-		var isBound = this.isBound();
+		var isBound = !!this.__bindings__;
 		
+		if (!!this.el) delete this.el.cbView;
 		if (isBound) this.unbindView();
 		
-		this.$el = $(element);
-		this.el = this.$el[0];
+		_defineIncalculableProperty(this, '$el', $(element));
+		_defineIncalculableProperty(this, 'el', this.$el[0]);
+		
+		this.el.cbView = this;
 		
 		if (isBound) this.bindView();
 		
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ELEMENT_CHANGE));
+		
 		return this;
-	},
-	
-	/**
-	 * Has this view already been bound to its associated element?
-	 * @returns
-	 */
-	isBound: function()
-	{
-		return !!this._bindings;
 	},
 	
 	/**
@@ -2266,7 +3897,7 @@ conbo.View = conbo.Bindable.extend
 	{
 		if (arguments.length > 1)
 		{
-			_.each(arguments, function(view, index, list) {
+			conbo.each(arguments, function(view, index, list) {
 				this.appendView(view);
 			}, this);
 			
@@ -2291,7 +3922,7 @@ conbo.View = conbo.Bindable.extend
 	{
 		if (arguments.length > 1)
 		{
-			_.each(arguments, function(view, index, list) {
+			conbo.each(arguments, function(view, index, list) {
 				this.prependView(view);
 			}, this);
 			
@@ -2341,96 +3972,26 @@ conbo.View = conbo.Bindable.extend
 	{
 		this.unbindView();
 		
-		var completeHandler = this.proxy(function(response, status, xhr)
+		var completeHandler = this.bind(function(response, status, xhr)
 		{
 			this.template = response;
 			
-			if (!!callbackFunction) callbackFunction.apply(this, arguments);
+			if (!!callbackFunction)
+			{
+				callbackFunction.apply(this, arguments);
+			}
 			
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.TEMPLATE_LOADED));
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.TEMPLATE_LOADED));
 			this.render();
 			this.bindView();
 		});
 		
 		this.$el.load(url, data, completeHandler);
-	},
-	
-	/**
-	 * Loads a CSS and apply it to the DOM
-	 * 
-	 * @param 	{String}	url			A string containing the URL to which the request is sent
-	 * @param 	{Function} 	callback	Callback in format function(success)
-	 */
-	loadCSS: function(url, callbackFunction)
-	{
-		if (!('document' in window)) return this;
-		
-		var $link = $('<link>').attr({rel:"stylesheet", type: "text/css", href:url}),
-			link = $link[0],
-			hasSheet = ('sheet' in link),
-			sheet = hasSheet ? 'sheet' : 'styleSheet', 
-			rules = hasSheet ? 'cssRules' : 'rules';
-		
-		var successInterval = setInterval(function()
-		{
-			try 
-			{
-				if (link[sheet] && link[sheet][rules].length) 
-				{
-					clearInterval(successInterval);
-					clearTimeout(errorTimeout);
-					callbackFunction(true);
-				}
-			}
-			catch(e) {}
-		}, 10);
-		
-		var errorTimeout = setTimeout( function() 
-		{
-			clearInterval(successInterval);
-			clearTimeout(errorTimeout);
-			$link.remove();
-			callbackFunction(false);
-		}, 15000);
-		
-		$('head').append($link);
-		
-		return this;
-	},
+	},	
 	
 	toString: function()
 	{
 		return 'conbo.View';
-	},
-	
-	/**
-	 * List of view options to be merged as properties.
-	 */
-	_viewOptions: 
-	[
-		'model', 
-		'collection', 
-		'el', 
-		'id', 
-		'attributes', 
-		'className', 
-		'tagName', 
-		'template',
-		'templateUrl'
-	],	
-	
-	/**
-	 * Performs the initial configuration of a View with a set of options.
-	 * Keys with special meaning *(model, collection, id, className)*, are
-	 * attached directly to the view.
-	 * 
-	 * @private
-	 */
-	_configure: function(options) 
-	{
-		if (this.options) options = _.extend({}, _.result(this, 'options'), options);
-		_.extend(this, _.pick(options, this._viewOptions));
-		this.options = options;
 	},
 	
 	/**
@@ -2445,15 +4006,15 @@ conbo.View = conbo.Bindable.extend
 	{
 		if (!this.el) 
 		{
-			var attrs = _.extend({}, _.result(this, 'attributes'));
-			if (this.id) attrs.id = _.result(this, 'id');
-			if (this.className) attrs['class'] = _.result(this, 'className');
-			var $el = $('<' + _.result(this, 'tagName') + '>').attr(attrs);
+			var attrs = conbo.extend({}, this.attributes);
+			if (this.id) attrs.id = this.id;
+			if (this.className) attrs['class'] = this.className;
+			var $el = $('<'+this.tagName+'>').attr(attrs);
 			this.setElement($el);
 		}
 		else 
 		{
-			this.setElement(_.result(this, 'el'));
+			this.setElement(this.el);
 			if (!!this.className) this.$el.addClass(this.className);
 		}
 		
@@ -2466,17 +4027,8 @@ conbo.View = conbo.Bindable.extend
 	},
 });
 
-//jQuery method shortcuts
-var viewMethods = ['html'];
+_denumerate(conbo.View.prototype);
 
-//Mix in each available Lo-Dash/Underscore method as a proxy to `Model#attributes`.
-_.each(viewMethods, function(method)
-{
-	conbo.View.prototype[method] = function() 
-	{
-		return this.$el[method].apply(this.$el, arguments);
-	};
-});
 /**
  * Application
  * 
@@ -2498,16 +4050,19 @@ conbo.Application = conbo.View.extend
 	 */
 	constructor: function(options)
 	{
-		options = _.clone(options) || {};
+		options = conbo.clone(options) || {};
 		
-		this.prefix = options.prefix || _.result(this, 'prefix') || '';
-		this.namespace = options.namespace || _.result(this, 'namespace') || '';
+		var prefix = options.prefix || this.prefix || '';
+		var namespace = options.namespace || this.namespace;
+		
+		_defineIncalculableProperty(this, 'prefix', prefix);
+		_defineIncalculableProperty(this, 'namespace', namespace);
 		
 		options.app = this;
 		options.context = new this.contextClass(options);
 		options.el || (options.el = this._findAppElement());
 		
-		conbo.View.prototype.constructor.apply(this, arguments);
+		conbo.View.prototype.constructor.call(this, options);
 		
 		this.applyViews();
 	},
@@ -2519,7 +4074,7 @@ conbo.Application = conbo.View.extend
 	{
 		var selector = '[cb-view]';
 		
-		this.$(selector).not('.cb-view').each(this.proxy(function(index, el)
+		this.$(selector).not('.cb-view').each(this.bind(function(index, el)
 		{
 			var view = this.$(el).cbAttrs().view,
 				viewClass;
@@ -2609,6 +4164,8 @@ conbo.Application = conbo.View.extend
 
 });
 
+_denumerate(conbo.Application.prototype);
+
 /**
  * conbo.Command
  * 
@@ -2625,9 +4182,10 @@ conbo.Command = conbo.EventDispatcher.extend
 	 */
 	constructor: function(options)
 	{
-		this._inject(options);
+		if (!!options) this.context = options.context;
 		this.event = options.event || {};
 		this.initialize.apply(this, arguments);
+		conbo.bindProperties(this, this.bindable);
 	},
 	
 	/**
@@ -2649,7 +4207,9 @@ conbo.Command = conbo.EventDispatcher.extend
 		return 'conbo.Command';
 	}
 	
-});
+}).implement(conbo.Injectable);
+
+_denumerate(conbo.Command.prototype);
 
 /**
  * Server Application 
@@ -2658,7 +4218,7 @@ conbo.Command = conbo.EventDispatcher.extend
  * 
  * @author		Neil Rackett
  */
-conbo.ServerApplication = conbo.Bindable.extend
+conbo.ServerApplication = conbo.EventDispatcher.extend
 ({
 	/**
 	 * Default context class to use
@@ -2672,22 +4232,24 @@ conbo.ServerApplication = conbo.Bindable.extend
 	 */
 	constructor: function(options)
 	{
-		options = _.clone(options) || {};
+		options = conbo.clone(options) || {};
 		options.app = this;
 		options.context || (options.context = new this.contextClass(options));
 		
-		this._inject(options);
-		this.options = options;
+		this.context = options.context;
 		this.initialize.apply(this, arguments);
+		
+		conbo.bindProperties(this, this.bindable);
 	},
-	
-	initialize: function() {},
 	
 	toString: function()
 	{
 		return 'conbo.ServerApplication';
-	},
-});
+	}
+	
+}).implement(conbo.Injectable);
+
+_denumerate(conbo.ServerApplication.prototype);
 
 /**
  * conbo.Model
@@ -2703,29 +4265,31 @@ conbo.Model = conbo.Hash.extend
 	 * Constructor: DO NOT override! (Use initialize instead)
 	 * @param options
 	 */
-	constructor: function(attributes, options) 
+	constructor: function(properties, options) 
 	{
 		var defaults;
-		var attrs = attributes || {};
+		var props = properties || {};
 		
 		options || (options = {});
 		
-		this.cid = _.uniqueId('c');
-		this._attributes = {};
+		this.cid = conbo.uniqueId('c');
 		
-		_.extend(this, _.pick(options, ['url','urlRoot','collection']));
+		_defineIncalculableProperty(this, '__properties__', {});
+		conbo.extend(this, conbo.pick(options, ['url','urlRoot','collection']));
 		
 		if (options.parse)
 		{
-			attrs = this.parse(attrs, options) || {};
+			props = this.parse(props, options) || {};
 		}
 		
-		attrs = _.defaults({}, attrs, _.result(this, 'defaults'));
+		props = conbo.defaults({}, props, this.defaults);
 		
-		this.set(attrs, options);
+		this.set(props, options);
 		
-		this._inject(options);
+		if (!!options) this.context = options.context;
 		this.initialize.apply(this, arguments);
+		
+		conbo.bindProperties(this, this.bindable);
 	},
 	
 	/**
@@ -2742,7 +4306,7 @@ conbo.Model = conbo.Hash.extend
 	 * The default name for the JSON `id` attribute is `"id"`. MongoDB and
 	 * CouchDB users may want to set this to `"_id"`.
 	 */
-	idAttribute: 'id',
+	idProperty: 'id',
 
 	/**
 	 * Initialize is an empty function by default. Override it with your own
@@ -2764,7 +4328,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	get: function(attr) 
 	{
-		return this._attributes[attr];
+		return this.__properties__[attr];
 	},
 
 	/**
@@ -2772,7 +4336,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	escape: function(attr) 
 	{
-		return _.escape(this.get(attr));
+		return conbo.escape(this.get(attr));
 	},
 
 	/**
@@ -2826,17 +4390,17 @@ conbo.Model = conbo.Hash.extend
 		
 		if (!changing) 
 		{
-			this._previousAttributes = _.clone(this._attributes);
+			this._previousAttributes = conbo.clone(this.__properties__);
 			this.changed = {};
 		}
 		
-		current = this._attributes;
+		current = this.__properties__;
 		prev = this._previousAttributes;
 
 		// Check for changes of `id`.
-		if (this.idAttribute in attrs)
+		if (this.idProperty in attrs)
 		{
-			this.id = attrs[this.idAttribute];
+			this.id = attrs[this.idProperty];
 		}
 
 		// For each `set` attribute, update or delete the current value.
@@ -2844,12 +4408,12 @@ conbo.Model = conbo.Hash.extend
 		{
 			val = attrs[attr];
 			
-			if (!_.isEqual(current[attr], val)) 
+			if (!conbo.isEqual(current[attr], val)) 
 			{
 				changes.push(attr);
 			}
 			
-			if (!_.isEqual(prev[attr], val)) 
+			if (!conbo.isEqual(prev[attr], val)) 
 			{
 				this.changed[attr] = val;
 			}
@@ -2868,7 +4432,7 @@ conbo.Model = conbo.Hash.extend
 			
 			for (var i=0, l=changes.length; i<l; i++) 
 			{
-				this.trigger(new conbo.ConboEvent('change:'+changes[i],
+				this.dispatchEvent(new conbo.ConboEvent('change:'+changes[i],
 				{
 					model: this,
 					value: current[changes[i]], 
@@ -2891,7 +4455,7 @@ conbo.Model = conbo.Hash.extend
 			{
 				this._pending = false;
 				
-				this.trigger(new conbo.ConboEvent(conbo.ConboEvent.CHANGE,
+				this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.CHANGE,
 				{
 					model: this,
 					options: options
@@ -2911,7 +4475,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	unset: function(attr, options) 
 	{
-		return this.set(attr, undefined, _.extend({}, options, {unset: true}));
+		return this.set(attr, undefined, conbo.extend({}, options, {unset: true}));
 	},
 
 	/**
@@ -2920,8 +4484,8 @@ conbo.Model = conbo.Hash.extend
 	clear: function(options) 
 	{
 		var attrs = {};
-		for (var key in this._attributes) attrs[key] = undefined;
-		return this.set(attrs, _.extend({}, options, {unset: true}));
+		for (var key in this.__properties__) attrs[key] = undefined;
+		return this.set(attrs, conbo.extend({}, options, {unset: true}));
 	},
 
 	/**
@@ -2930,7 +4494,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	hasChanged: function(attr) 
 	{
-		if (attr == null) return !_.isEmpty(this.changed);
+		if (attr == null) return !conbo.isEmpty(this.changed);
 		return attr in this.changed;
 	},
 	
@@ -2944,11 +4508,11 @@ conbo.Model = conbo.Hash.extend
 	 */
 	changedAttributes: function(diff) 
 	{
-		if (!diff) return this.hasChanged() ? _.clone(this.changed) : false;
+		if (!diff) return this.hasChanged() ? conbo.clone(this.changed) : false;
 		var val, changed = false;
-		var old = this._changing ? this._previousAttributes : this._attributes;
+		var old = this._changing ? this._previousAttributes : this.__properties__;
 		for (var attr in diff) {
-			if (_.isEqual(old[attr], (val = diff[attr]))) continue;
+			if (conbo.isEqual(old[attr], (val = diff[attr]))) continue;
 			(changed || (changed = {}))[attr] = val;
 		}
 		return changed;
@@ -2970,7 +4534,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	previousAttributes: function() 
 	{
-		return _.clone(this._previousAttributes);
+		return conbo.clone(this._previousAttributes);
 	},
 
 	/**
@@ -2980,7 +4544,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	fetch: function(options) 
 	{
-		options = options ? _.clone(options) : {};
+		options = options ? conbo.clone(options) : {};
 		
 		if (options.parse === undefined)
 		{
@@ -2989,7 +4553,7 @@ conbo.Model = conbo.Hash.extend
 		
 		var success = options.success;
 		
-		options.success = this.proxy(function(resp)
+		options.success = this.bind(function(resp)
 		{
 			if (!this.set(this.parse(resp, options), options))
 			{
@@ -3001,7 +4565,7 @@ conbo.Model = conbo.Hash.extend
 				success(this, resp, options);
 			}
 			
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.SYNC,
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.SYNC,
 			{
 				model:		this,
 				response:	resp,
@@ -3021,7 +4585,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	save: function(key, val, options) 
 	{
-		var attrs, method, xhr, attributes = this._attributes;
+		var attrs, method, xhr, attributes = this.__properties__;
 		
 		// Handle both `"key", value` and `{key: value}` -style arguments.
 		if (key == null || typeof key === 'object')
@@ -3040,7 +4604,7 @@ conbo.Model = conbo.Hash.extend
 			return false;
 		}
 
-		options = _.extend({validate: true}, options);
+		options = conbo.extend({validate: true}, options);
 
 		// Do not persist invalid models.
 		if (!this._validate(attrs, options)) 
@@ -3051,7 +4615,7 @@ conbo.Model = conbo.Hash.extend
 		// Set temporary attributes if `{wait: true}`.
 		if (attrs && options.wait)
 		{
-			this._attributes = _.extend({}, attributes, attrs);
+			this.__properties__ = conbo.extend({}, attributes, attrs);
 		}
 
 		// After a successful server-side save, the client is (optionally)
@@ -3067,16 +4631,16 @@ conbo.Model = conbo.Hash.extend
 		options.success = function(resp) 
 		{
 			// Ensure attributes are restored during synchronous saves.
-			model._attributes = attributes;
+			model.__properties__ = attributes;
 			
 			var serverAttrs = model.parse(resp, options);
 			
 			if (options.wait) 
 			{
-				serverAttrs = _.extend(attrs || {}, serverAttrs);
+				serverAttrs = conbo.extend(attrs || {}, serverAttrs);
 			}
 			
-			if (_.isObject(serverAttrs) && !model.set(serverAttrs, options)) 
+			if (conbo.isObject(serverAttrs) && !model.set(serverAttrs, options)) 
 			{
 				return false;
 			}
@@ -3086,7 +4650,7 @@ conbo.Model = conbo.Hash.extend
 				success(model, resp, options);
 			}
 			
-			model.trigger(new conbo.ConboEvent(conbo.ConboEvent.SYNC,
+			model.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.SYNC,
 			{
 				model: model,
 				response: resp, 
@@ -3101,7 +4665,7 @@ conbo.Model = conbo.Hash.extend
 		xhr = this.sync(method, this, options);
 
 		// Restore attributes.
-		if (attrs && options.wait) this._attributes = attributes;
+		if (attrs && options.wait) this.__properties__ = attributes;
 		
 		return xhr;
 	},
@@ -3113,14 +4677,14 @@ conbo.Model = conbo.Hash.extend
 	 */
 	destroy: function(options) 
 	{
-		options = options ? _.clone(options) : {};
+		options = options ? conbo.clone(options) : {};
 		
 		var model = this;
 		var success = options.success;
 		
-		var destroy = this.proxy(function() 
+		var destroy = this.bind(function() 
 		{
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.DESTROY,
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.DESTROY,
 			{
 				model: this,
 				collection: model.collection,
@@ -3142,7 +4706,7 @@ conbo.Model = conbo.Hash.extend
 			
 			if (!model.isNew()) 
 			{
-				model.trigger(new conbo.ConboEvent(conbo.ConboEvent.SYNC, 
+				model.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.SYNC, 
 				{
 					model: model, 
 					response: resp, 
@@ -3172,7 +4736,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	url: function() 
 	{
-		var base = _.result(this, 'urlRoot') || _.result(this.collection, 'url') || urlError();
+		var base = this.urlRoot || this.collection.url || urlError();
 		if (this.isNew()) return base;
 		return base + (base.charAt(base.length - 1) === '/' ? '' : '/') + encodeURIComponent(this.id);
 	},
@@ -3191,7 +4755,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	clone: function() 
 	{
-		return new this.constructor(this._attributes);
+		return new this.constructor(this.__properties__);
 	},
 
 	/**
@@ -3207,7 +4771,7 @@ conbo.Model = conbo.Hash.extend
 	 */
 	isValid: function(options) 
 	{
-		return this._validate({}, _.extend(options || {}, { validate: true }));
+		return this._validate({}, conbo.extend(options || {}, { validate: true }));
 	},
 	
 	toString: function()
@@ -3222,15 +4786,15 @@ conbo.Model = conbo.Hash.extend
 	_validate: function(attrs, options) 
 	{
 		if (!options.validate || !this.validate) return true;
-		attrs = _.extend({}, this._attributes, attrs);
+		attrs = conbo.extend({}, this.__properties__, attrs);
 		var error = this.validationError = this.validate(attrs, options) || null;
 		if (!error) return true;
 		
-		this.trigger(new conbo.ConboEvent(conbo.ConboEvent.INVALID,
+		this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.INVALID,
 		{
 			model: 		this,
 			error: 		error,
-			options: 	_.extend(options || {}, {validationError: error})
+			options: 	conbo.extend(options || {}, {validationError: error})
 		}));
 		
 		return false;
@@ -3247,7 +4811,7 @@ var wrapError = function (model, options)
 	{
 		if (!!callback) callback(model, resp, options);
 		
-		model.trigger(new conbo.ConboEvent(conbo.ConboEvent.ERROR,
+		model.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ERROR,
 		{
 			model:model, 
 			response:resp, 
@@ -3255,6 +4819,8 @@ var wrapError = function (model, options)
 		}));
 	};
 };
+
+_denumerate(conbo.Model.prototype);
 
 /**
  * Collection
@@ -3291,14 +4857,15 @@ conbo.Collection = conbo.List.extend
 		}
 		
 		this._reset();
-		this._inject(options);
+		if (!!options) this.context = options.context;
 		
 		if (models) 
 		{
-			this.reset(models, _.extend({silent: true}, options));
+			this.reset(models, conbo.extend({silent: true}, options));
 		}
 		
 		this.initialize.apply(this, arguments);
+		conbo.bindProperties(this, this.bindable);
 	},
 
 	/**
@@ -3329,7 +4896,7 @@ conbo.Collection = conbo.List.extend
 	 */
 	add: function(models, options)
 	{
-		return this.set(models, _.defaults(options || {}, {add:true, merge:false, remove:false}));
+		return this.set(models, conbo.defaults(options || {}, {add:true, merge:false, remove:false}));
 	},
 
 	/**
@@ -3337,7 +4904,7 @@ conbo.Collection = conbo.List.extend
 	 */
 	remove: function(models, options)
 	{
-		models = _.isArray(models) ? models.slice() : [models];
+		models = conbo.isArray(models) ? models.slice() : [models];
 		options || (options = {});
 		
 		var i, l, index, model;
@@ -3363,7 +4930,7 @@ conbo.Collection = conbo.List.extend
 			{
 				options.index = index;
 						
-				this.trigger(new conbo.ConboEvent(conbo.ConboEvent.REMOVE,
+				this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.REMOVE,
 				{
 					model: model,
 					collection: this,
@@ -3385,15 +4952,15 @@ conbo.Collection = conbo.List.extend
 	 */
 	set: function(models, options) 
 	{
-		options = _.defaults(options || {}, {add: true, remove: true, merge: true});
+		options = conbo.defaults(options || {}, {add: true, remove: true, merge: true});
 		
 		if (options.parse) models = this.parse(models, options);
-		if (!_.isArray(models)) models = models ? [models] : [];
+		if (!conbo.isArray(models)) models = models ? [models] : [];
 		
 		var i, l, model, existing, sort = false;
 		var at = options.at;
 		var sortable = this.comparator && (at == null) && options.sort !== false;
-		var sortAttr = _.isString(this.comparator) ? this.comparator : null;
+		var sortAttr = conbo.isString(this.comparator) ? this.comparator : null;
 		var toAdd = [], toRemove = [], modelMap = {};
 
 		// Turn bare objects into model references, and prevent invalid models
@@ -3413,7 +4980,7 @@ conbo.Collection = conbo.List.extend
 				
 				if (options.merge) 
 				{
-					existing.set(model.attributes, options);
+					existing.set(model.__properties__, options);
 					if (sortable && !sort && existing.hasChanged(sortAttr)) sort = true;
 				}
 
@@ -3425,7 +4992,7 @@ conbo.Collection = conbo.List.extend
 
 				// Listen to added models' events, and index models for lookup by
 				// `id` and by `cid`.
-				model.on('all', this._onModelEvent, this);
+				model.addEventListener('all', this._onModelEvent, this);
 				
 				this._byId[model.cid] = model;
 				
@@ -3477,7 +5044,7 @@ conbo.Collection = conbo.List.extend
 		{
 			var model = toAdd[i];
 			
-			model.trigger(new conbo.ConboEvent(conbo.ConboEvent.ADD, 
+			model.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ADD, 
 			{
 				model:model, 
 				collection:this, 
@@ -3488,7 +5055,7 @@ conbo.Collection = conbo.List.extend
 		// Trigger `sort` if the collection was sorted.
 		if (sort)
 		{
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.SORT, 
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.SORT, 
    			{
    				collection:this, 
    				options:options
@@ -3515,11 +5082,11 @@ conbo.Collection = conbo.List.extend
 		options.previousModels = this._models;
 		
 		this._reset();
-		this.add(models, _.extend({silent: true}, options));
+		this.add(models, conbo.extend({silent: true}, options));
 				
 		if (!options.silent) 
 		{
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.RESET,
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.RESET,
 			{
 				collection: this,
 				options: options
@@ -3535,7 +5102,7 @@ conbo.Collection = conbo.List.extend
 	push: function(model, options)
 	{
 		model = this._prepareModel(model, options);
-		this.add(model, _.extend({at: this.length}, options));
+		this.add(model, conbo.extend({at: this.length}, options));
 		return model;
 	},
 	
@@ -3555,7 +5122,7 @@ conbo.Collection = conbo.List.extend
 	unshift: function(model, options) 
 	{
 		model = this._prepareModel(model, options);
-		this.add(model, _.extend({at: 0}, options));
+		this.add(model, conbo.extend({at: 0}, options));
 		return model;
 	},
 
@@ -3576,14 +5143,14 @@ conbo.Collection = conbo.List.extend
 	{
 		return this._models.slice(begin, end);
 	},
-
+	
 	/**
 	 * Get a model from the set by id.
 	 */
 	get: function(obj) 
 	{
 		if (obj == null) return undefined;
-		this._idAttr || (this._idAttr = this.modelClass.prototype.idAttribute);
+		this._idAttr || (this._idAttr = this.modelClass.prototype.idProperty);
 		return this._byId[obj.id || obj.cid || obj[this._idAttr] || obj];
 	},
 
@@ -3600,7 +5167,7 @@ conbo.Collection = conbo.List.extend
 	 */
 	where: function(attrs, first) 
 	{
-		if (_.isEmpty(attrs)) return first ? undefined : [];
+		if (conbo.isEmpty(attrs)) return first ? undefined : [];
 		
 		return this[first ? 'find' : 'filter'](function(model) 
 		{
@@ -3633,18 +5200,18 @@ conbo.Collection = conbo.List.extend
 		options || (options = {});
 		
 		// Run sort based on type of `comparator`.
-		if (_.isString(this.comparator) || this.comparator.length === 1) 
+		if (conbo.isString(this.comparator) || this.comparator.length === 1) 
 		{
 			this._models = this.sortBy(this.comparator, this);
 		}
 		else 
 		{
-			this._models.sort(_.bind(this.comparator, this));
+			this._models.sort(conbo.bind(this.comparator, this));
 		}
 
 		if (!options.silent) 
 		{
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.SORT,
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.SORT,
 			{
 				collection: this,
 				options: options
@@ -3662,12 +5229,12 @@ conbo.Collection = conbo.List.extend
 	{
 		value || (value = this.comparator);
 		
-		var iterator = _.isFunction(value) ? value : function(model) 
+		var iterator = conbo.isFunction(value) ? value : function(model) 
 		{
 			return model.get(value);
 		};
 		
-		return _.sortedIndex(this._models, model, iterator, context);
+		return conbo.sortedIndex(this._models, model, iterator, context);
 	},
 
 	/**
@@ -3675,7 +5242,7 @@ conbo.Collection = conbo.List.extend
 	 */
 	pluck: function(attr)
 	{
-		return _.invoke(this._models, 'get', attr);
+		return conbo.invoke(this._models, 'get', attr);
 	},
 
 	/**
@@ -3685,7 +5252,7 @@ conbo.Collection = conbo.List.extend
 	 */
 	fetch: function(options) 
 	{
-		options = options ? _.clone(options) : {};
+		options = options ? conbo.clone(options) : {};
 		
 		if (options.parse === undefined) options.parse = true;
 		
@@ -3703,7 +5270,7 @@ conbo.Collection = conbo.List.extend
 				success(collection, resp, options);
 			}
 			
-			collection.trigger(new conbo.ConboEvent(conbo.ConboEvent.SYNC,
+			collection.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.SYNC,
 			{
 				collection:	collection,
 				response:	resp,
@@ -3723,7 +5290,7 @@ conbo.Collection = conbo.List.extend
 	 */
 	create: function(model, options) 
 	{
-		options = options ? _.clone(options) : {};
+		options = options ? conbo.clone(options) : {};
 		
 		if (!(model = this._prepareModel(model, options))) return false;
 		if (!options.wait) this.add(model, options);
@@ -3796,7 +5363,7 @@ conbo.Collection = conbo.List.extend
 		
 		if (!model._validate(attrs, options)) 
 		{
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.INVALID,
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.INVALID,
 			{
 				collection:	this,
 				attrs:		attrs,
@@ -3814,7 +5381,7 @@ conbo.Collection = conbo.List.extend
 	 */
 	_removeReference: function(model) {
 		if (this === model.collection) delete model.collection;
-		model.off('all', this._onModelEvent, this);
+		model.removeEventListener('all', this._onModelEvent, this);
 	},
 
 	/**
@@ -3840,9 +5407,9 @@ conbo.Collection = conbo.List.extend
 			this.remove(model, event.options);
 		}
 		
-		if (model && event.type == 'change:' + model.idAttribute) 
+		if (model && event.type == 'change:' + model.idProperty) 
 		{
-			delete this._byId[event.model.previous(model.idAttribute)];
+			delete this._byId[event.model.previous(model.idProperty)];
 			
 			if (model.id != null) 
 			{
@@ -3850,7 +5417,7 @@ conbo.Collection = conbo.List.extend
 			}
 		}
 		
-		this.trigger(event);
+		this.dispatchEvent(event);
 	},
 
 	toString: function()
@@ -3858,6 +5425,9 @@ conbo.Collection = conbo.List.extend
 		return 'conbo.Collection';
 	}
 });
+
+_denumerate(conbo.Collection.prototype);
+
 
 // Cached regex for stripping a leading hash/slash and trailing space.
 var routeStripper = /^[#\/]|\s+$/g;
@@ -3902,7 +5472,7 @@ conbo.History = conbo.EventDispatcher.extend
 	constructor: function(options)
 	{
 		this.handlers = [];
-		this.proxyAll('checkUrl');
+		this.bindAll('checkUrl');
 		
 		// Ensure that `History` can be used outside of the browser.
 		if (typeof window !== 'undefined')
@@ -3911,14 +5481,9 @@ conbo.History = conbo.EventDispatcher.extend
 			this.history = window.history;
 		}
 		
-		this._inject(options);
+		if (!!options) this.context = options.context;
 		this.initialize.apply(this, arguments);
 	},
-	
-	/**
-	 * Initialize: Override this!
-	 */
-	initialize: function(){},
 	
 	/**
 	 * Gets the true hash value. Cannot use location.hash directly due
@@ -3967,11 +5532,7 @@ conbo.History = conbo.EventDispatcher.extend
 		
 		// Figure out the initial configuration. Do we need an iframe?
 		// Is pushState desired ... is it available?
-		this.options = _.extend(
-		{},
-		{
-			root: '/'
-		}, this.options, options);
+		this.options = conbo.extend({}, {root:'/'}, this.options, options);
 		this.root = this.options.root;
 		this._wantsHashChange = this.options.hashChange !== false;
 		this._wantsPushState = !!this.options.pushState;
@@ -4088,7 +5649,7 @@ conbo.History = conbo.EventDispatcher.extend
 	{
 		var fragment = this.fragment = this.getFragment(fragmentOverride);
 		
-		var matched = _.any(this.handlers, function(handler)
+		var matched = conbo.any(this.handlers, function(handler)
 		{
 			if (handler.route.test(fragment))
 			{
@@ -4159,7 +5720,6 @@ conbo.History = conbo.EventDispatcher.extend
 		return 'conbo.History';
 	},
 	
-	
 	/**
 	 * Update the hash location, either replacing the current entry, or
 	 * adding a new one to the browser history.
@@ -4178,7 +5738,9 @@ conbo.History = conbo.EventDispatcher.extend
 		}
 	}
 	
-});
+}).implement(conbo.Injectable);
+
+_denumerate(conbo.History.prototype);
 
 // Create default instance of the History class
 conbo.history = new conbo.History();
@@ -4208,15 +5770,10 @@ conbo.Router = conbo.EventDispatcher.extend
 		if (options.routes) this.routes = options.routes;
 		this._bindRoutes();
 		
-		this._inject(options);
+		if (!!options) this.context = options.context;
 		this.initialize.apply(this, arguments);
 	},
 	
-	/**
-	 * Initialize: Override this!
-	 */
-	initialize: function(){},
-
 	/**
 	 * Manually bind a single named route to a callback. For example:
 	 * 
@@ -4227,7 +5784,7 @@ conbo.Router = conbo.EventDispatcher.extend
 	 */ 
 	route: function(route, name, callback) 
 	{
-		if (!_.isRegExp(route)) 
+		if (!conbo.isRegExp(route)) 
 		{
 			route = this._routeToRegExp(route);
 		}
@@ -4237,7 +5794,7 @@ conbo.Router = conbo.EventDispatcher.extend
 			callback = this[name];
 		}
 		
-		if (_.isFunction(name)) 
+		if (conbo.isFunction(name)) 
 		{
 			callback = name;
 			name = '';
@@ -4248,7 +5805,7 @@ conbo.Router = conbo.EventDispatcher.extend
 			callback = this[name];
 		}
 		
-		conbo.history.route(route, this.proxy(function(fragment)
+		conbo.history.route(route, this.bind(function(fragment)
 		{
 			var args = this._extractParameters(route, fragment);
 			callback && callback.apply(this, args);
@@ -4261,10 +5818,10 @@ conbo.Router = conbo.EventDispatcher.extend
 				parameters:	args
 			}
 			
-			this.trigger(new conbo.ConboEvent('route:'+name, options));
-			this.trigger(new conbo.ConboEvent(conbo.ConboEvent.ROUTE, options));
+			this.dispatchEvent(new conbo.ConboEvent('route:'+name, options));
+			this.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ROUTE, options));
 			
-			conbo.history.trigger(new conbo.ConboEvent(conbo.ConboEvent.ROUTE, options));
+			conbo.history.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.ROUTE, options));
 		}));
 		
 		return this;
@@ -4294,8 +5851,8 @@ conbo.Router = conbo.EventDispatcher.extend
 	_bindRoutes: function() 
 	{
 		if (!this.routes) return;
-		this.routes = _.result(this, 'routes');
-		var route, routes = _.keys(this.routes);
+		this.routes = this.routes;
+		var route, routes = conbo.keys(this.routes);
 		while ((route = routes.pop()) != null) {
 			this.route(route, this.routes[route]);
 		}
@@ -4329,12 +5886,14 @@ conbo.Router = conbo.EventDispatcher.extend
 	_extractParameters: function(route, fragment) 
 	{
 		var params = route.exec(fragment).slice(1);
-		return _.map(params, function(param) {
+		return conbo.map(params, function(param) {
 			return param ? decodeURIComponent(param) : null;
 		});
 	}
+	
+}).implement(conbo.Injectable);
 
-});
+_denumerate(conbo.Router.prototype);
 
 /**
  * Sync
@@ -4362,7 +5921,7 @@ conbo.sync = function(method, model, options)
 	var type = methodMap[method];
 
 	// Default options, unless specified.
-	_.defaults(options || (options = {}), 
+	conbo.defaults(options || (options = {}), 
 	{
 		emulateHTTP: conbo.emulateHTTP,
 		emulateJSON: conbo.emulateJSON
@@ -4378,7 +5937,7 @@ conbo.sync = function(method, model, options)
 	// Ensure that we have a URL.
 	if (!options.url) 
 	{
-		var url = _.result(model, 'url');
+		var url = model.url;
 		if (!url) throw new Error('"url" must be specified');
 		params.url = url;
 	}
@@ -4443,9 +6002,9 @@ conbo.sync = function(method, model, options)
 	}
 
 	// Make the request, allowing the user to override any Ajax options.
-	var xhr = options.xhr = conbo.ajax(_.extend(params, options));
+	var xhr = options.xhr = conbo.ajax(conbo.extend(params, options));
 	
-	model.trigger(new conbo.ConboEvent(conbo.ConboEvent.REQUEST,
+	model.dispatchEvent(new conbo.ConboEvent(conbo.ConboEvent.REQUEST,
 	{
 		model: model, 
 		xhr: xhr, 
@@ -4483,29 +6042,25 @@ conbo.ajax = function()
 	// Node.js
 	if (typeof module !== 'undefined' && module.exports)
 	{
-		var _, $;
-		
-		try { _ = require('lodash'); } catch (e) {
-		try { _ = require('underscore'); } catch (e)
-			{ throw new Error('Conbo.js requires underscore or lodash'); }}
+		var $;
 		
 		try { $ = require('jQuery'); } catch (e) {
 		try { $ = require('jquery'); } catch (e) {}}
 		
-    	module.exports = create(_, $);
+    	module.exports = create($);
     }
     // AMD
     else if (typeof define === 'function' && define.amd) 
 	{
-		define('conbo', ['underscore','jquery'], function (_, $)
+		define('conbo', ['jquery'], function ($)
 		{
-			return create(_, $);
+			return create($);
 		});
 	}
 	// Global
 	else
 	{
-		window.conbo = create(window._, window.jQuery || window.Zepto || window.ender);
+		window.conbo = create(window.jQuery || window.Zepto || window.ender);
 	}
 	
 })(this, document);
