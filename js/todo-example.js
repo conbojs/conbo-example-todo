@@ -1,28 +1,26 @@
 /**
- * Simple Todo application example using Conbo.js framework's automatic 
- * data binding features.
+ * Simple Todo application example using Conbo.js
  * 
  * We've put all the code into a single file For demonstration purposes,
  * but in your own projects we recommend splitting your code into a
  * more sensible file/folder structure.
  * 
- * **This example app works, but is still a work in progress**
- * 
  * @author	Neil Rackett
  */
-(function(window, document, conbo, $, _, undefined)
+conbo('conbo.example.todo', window, document, conbo, function(window, document, conbo, undefined)
 {
 	'use strict';
 	
-	var app = {},
-		ENTER_KEY = 13,
-		ESC_KEY = 27;
+	var ns = this;
+	
+	var ENTER_KEY = 13;
+	var ESC_KEY = 27;
 	
 	/**
 	 * Todo Model
 	 * Our basic **Todo** model has `title` and `completed` attributes.
 	 */
-	app.TodoModel = conbo.Model.extend
+	ns.TodoModel = conbo.Hash.extend
 	({
 		// Default values
 		defaults: 
@@ -32,64 +30,56 @@
 		},
 		
 		// Toggle the `completed` state of this todo item.
-		toggle: function () 
+		toggle: function() 
 		{
-			this.save({completed: this.get('completed')});
+			this.completed = !this.completed;
 		}
 	});
 	
 	/**
-	 * Todo Collection
-	 * Collection of todos backed by localStorage instead of a remote server.
+	 * Todo List
+	 * Collection of todos saved in localStorage
 	 */
-	app.TodoCollection = conbo.Collection.extend
+	ns.TodoList = conbo.LocalList.extend
 	({
 		/**
-		 * The Conbo.js class to use for this collections models
+		 * The Conbo.js class to use for this items in this list
 		 */
-		model: app.TodoModel,
-		
-		/**
-		 * Save all of the todo items in local storage
-		 */
-		localStorage: new conbo.LocalStorage('todos-conbo'),
+		itemClass: ns.TodoModel,
 		
 		/**
 		 * Filter down the list of all todo items that are finished.
 		 */
-		completed: function () 
+		get completed() 
 		{
 			return this.filter(function(todo) 
 			{
-				return todo.get('completed');
+				return todo.completed;
 			});
 		},
 		
 		/**
 		 * Filter down the list to only todo items that are still not finished.
 		 */
-		remaining: function ()
+		get remaining()
 		{
-			return this.without.apply(this, this.completed());
-		},
-
-		/**
-		 * We keep the Todos in sequential order, despite being saved by unordered
-		 * GUID in the database. This generates the next order number for new items.
-		 */
-		nextOrder: function () 
-		{
-			if (!this.length) return 1;
-			return this.last().get('order') + 1;
+			return this.without.apply(this, this.completed);
 		},
 		
 		/**
-		 * Todos are sorted by their original insertion order.
+		 * Remove completed items
 		 */
-		comparator: function (todo) 
+		removeCompleted: function()
 		{
-			return todo.get('order');
+			for (var i=0; i<this.length; i++)
+			{
+				if (this[i].completed)
+				{
+					this.splice(i--, 1);
+				}
+			}
 		}
+		
 	});
 	
 	/**
@@ -98,7 +88,7 @@
 	 * The central event bus, data injector and defender against the
 	 * evils of global variables
 	 */
-	app.TodoContext = conbo.Context.extend
+	ns.TodoContext = conbo.Context.extend
 	({
 		/**
 		 * Initialize the context by creating a context wide Todos Collection
@@ -107,11 +97,10 @@
 		 */
 		initialize: function()
 		{
-			this.mapSingleton('todoCollection', app.TodoCollection);
-			this.mapSingleton('filterModel', conbo.Model);
-			
-			new app.TodoRouter(this.addTo())
-			conbo.history.start();
+			this.mapSingleton('todoList', ns.TodoList, {name:'conbo-todo-example'})
+				.mapSingleton('filterModel', conbo.Hash, {source:{filter:undefined}})
+				.mapSingleton('router', ns.TodoRouter, this.addTo())
+				;
 		}
 	});
 	
@@ -119,68 +108,37 @@
 	 * Todo Item View
 	 * The DOM element for a todo item...
 	 */
-	app.TodoItemView = conbo.View.extend
+	ns.TodoItemRenderer = conbo.ItemRenderer.extend
 	({
 		/**
-		 * Context wide filter model will be automatically injected
+		 * These will automatically be injected
 		 */
 		filterModel: undefined,
+		todoList: undefined,
 		
 		/**
 		 * This View is a list item
 		 */
 		tagName:  'li',
-
-		/**
-		 * Cache the template function for a single item.
-		 */
-		template: $('#item-template').html(),
 		
 		/**
-		 * The TodoView listens for changes to its model, re-rendering. Since
-		 * there's a one-to-one correspondence between a **Todo** and a
-		 * **TodoView** in this app, we set a direct reference on the model for
-		 * convenience.		 
+		 * The CSS class(es) to apply to this item  
 		 */
-		initialize: function () 
+		className: 'view',
+		
+		/**
+		 * The TodoView listens for changes to its model and re-renders automatically
+		 */
+		initialize: function() 
 		{
 			this.bindAll();
-			
-			this.data.addEventListener('change', this.render, this);
-			this.data.addEventListener('destroy', this.remove, this);
-			this.data.addEventListener('visible', this.toggleVisible, this);
-		},
-		
-		/**
-		 * Render the titles of the todo item.
-		 */
-		render: function () 
-		{
-			this.toggleVisible();
 			this.$input = this.$('.edit');
-			
-			return this;
-		},
-		
-		toggleVisible: function ()
-		{
-			this.$el.toggleClass('hidden', this.isHidden());
-		},
-		
-		isHidden: function () 
-		{
-			var isCompleted = this.data.get('completed');
-			
-			return (// hidden cases only
-				(!isCompleted && this.filterModel.get('filter') === 'completed') ||
-				(isCompleted && this.filterModel.get('filter') === 'active')
-			);
 		},
 
 		/**
 		 * Toggle the `"completed"` state of the model.
 		 */
-		toggleCompleted: function ()
+		toggleCompleted: function()
 		{
 			this.data.toggle();
 		},
@@ -188,16 +146,16 @@
 		/**
 		 * Switch this view into `"editing"` mode, displaying the input field.
 		 */
-		edit: function () 
+		edit: function() 
 		{
 			this.$el.addClass('editing');
 			this.$input.focus();
 		},
-
+		
 		/**
 		 * Close the `"editing"` mode, saving changes to the todo.
 		 */
-		close: function () 
+		close: function() 
 		{
 			var value = this.$input.val();
 			var trimmedValue = value.trim();
@@ -215,8 +173,8 @@
 			
 			if (trimmedValue) 
 			{
-				this.data.save({title:trimmedValue});
-			} 
+				this.data.title = trimmedValue;
+			}
 			else 
 			{
 				this.clear();
@@ -228,7 +186,7 @@
 		/**
 		 * If you hit `enter`, we're through editing the item.
 		 */
-		updateOnEnter: function (e) 
+		updateOnEnter: function(e) 
 		{
 			if (e.which === ENTER_KEY) 
 			{
@@ -240,7 +198,7 @@
 		 * If you're pressing `escape` we revert your change by simply leaving
 		 * the `editing` state.
 		 */
-		revertOnEscape: function (e) 
+		revertOnEscape: function(e) 
 		{
 			if (e.which === ESC_KEY)
 			{
@@ -251,9 +209,9 @@
 		/**
 		 * Remove the item, destroy the model from *localStorage* and delete its view.
 		 */
-		clear: function () 
+		clear: function() 
 		{
-			this.data.destroy();
+			this.todoList.splice(this.todoList.indexOf(this.data), 1);
 		}
 	});
 
@@ -261,18 +219,16 @@
 	 * The Application
 	 * This app's top level UI container
 	 */
-	app.TodoApplication = conbo.Application.extend
+	ns.TodoApplication = conbo.Application.extend
 	({
-		contextClass: app.TodoContext,
+		namespace: ns,
+		contextClass: ns.TodoContext,
 		
 		/**
-		 * Todo Collection
-		 * 
 		 * Values that are registered in the context and undefined in classes
 		 * are automatically injected
 		 */
-		todoCollection: undefined,
-		
+		todoList: undefined,
 		filterModel: undefined,
 		
 		/**
@@ -300,52 +256,50 @@
 		 * collection, when items are added or changed. Kick things off by
 		 * loading any preexisting todos that might be saved in *localStorage*.
 		 */
-		initialize: function () 
+		initialize: function() 
 		{
 			this.bindAll();
 			
-			this.$input = this.$('#new-todo');
-			this.$list = $('#todo-list');
+			this.todoList.addEventListener('change', this.updateStats, this);
+			this.filterModel.addEventListener('change:filter', this.refresh, this);
 			
-			this.todoCollection.addEventListener('add', this.todoCollection_add, this);
-			this.todoCollection.addEventListener('reset', this.todoCollection_reset, this);
-			this.todoCollection.addEventListener('change:completed', this.todoCollection_changeCompleted, this);
-			this.todoCollection.addEventListener('all', this.render, this);
+			this.bindAll()
+				.updateStats()
+				;
+		},
+		
+		refresh: function()
+		{
+			this.$el.removeClass(function(index, css) 
+			{
+				return (css.match(/(^|\s)filter-\S+/g) || []).join(' ');
+			})
+			.addClass('filter-'+(this.filterModel.filter || 'all'));
 			
-			// Suppresses 'add' events with {reset: true} and prevents the app view
-			// from being re-rendered for every model. Only renders when the 'reset'
-			// event is triggered at the end of the fetch.
-			this.todoCollection.fetch({reset: true});
-			
-			this.filterModel.addEventListener('change:filter', this.filterModel_change, this);
+			this.dispatchChange('todoList');
 		},
 		
 		/**
 		 * Re-rendering the App just means refreshing the statistics -- the rest
 		 * of the app doesn't change.
 		 */
-		render: function (event)
+		updateStats: function(event)
 		{
-			this.set('completed', this.todoCollection.completed().length)
-				.set('remaining', this.todoCollection.remaining().length);
+			this.completed = this.todoList.completed.length;
+			this.remaining = this.todoList.remaining.length;
 			
-			if (!!this.todoCollection.length) 
+			if (this.todoList.length) 
 			{
-				this.set('mainVisible', true)
-					.set('footerVisible', true);
-				
-				this.$('#filters li a')
-					.removeClass('selected')
-					.filter('[href="#/' + (this.filterModel.get('filter') || '') + '"]')
-					.addClass('selected');
+				this.mainVisible = true;
+				this.footerVisible = true;
 			}
 			else
 			{
-				this.set('mainVisible', false)
-					.set('footerVisible', false);
+				this.mainVisible = false;
+				this.footerVisible = false;
 			}
 			
-			this.set('allChecked', !this.remaining);
+			this.allChecked = !this.remaining;
 		},
 		
 		/**
@@ -356,96 +310,54 @@
 			return value == 1 ? 'item' : 'items';
 		},
 		
-		todoCollection_add: function(event)
+		todoFilter: function(todo)
 		{
-			this.addOne(event.model);
+			switch (this.filterModel.filter)
+			{
+				case 'active':
+					return this.todoList.remaining;
+					
+				case 'completed':
+					return this.todoList.completed;
+					
+				default:
+					return this.todoList;
+			}
 		},
 		
-		todoCollection_reset: function(event)
-		{
-			this.addAll();
-		},
-		
-		todoCollection_changeCompleted: function(event)
-		{
-			this.filterOne(event.model);
-		},
-		
-		/**
-		 * Add a single todo item to the list by creating a view for it, and
-		 * appending its element to the `<ul>`.
-		 */
-		addOne: function(todo) 
-		{
-			var view = new app.TodoItemView(this.context.addTo({data:todo}));			
-			this.$list.append(view.el);
-		},
-		
-		/**
-		 * Add all items in the **Todos** collection at once.
-		 */
-		addAll: function () 
-		{
-			this.$list.html('');
-			this.todoCollection.each(this.addOne, this);
-		},
-		
-		filterOne: function (todo) 
-		{
-			todo.dispatchEvent(new conbo.Event('visible'));
-		},
-		
-		filterModel_change: function(event)
-		{
-			this.filterAll();
-		},
-		
-		filterAll: function () 
-		{
-			this.todoCollection.each(this.filterOne, this);
-		},
-		
-		/**
-		 * Generate the attributes for a new Todo item.
-		 */
-		newAttributes: function () 
-		{
-			return {
-				title: this.$input.val().trim(),
-				order: this.todoCollection.nextOrder(),
-				completed: false
-			};
-		},
-
 		/**
 		 * If you hit return in the main input field, create new **Todo** model,
 		 * persisting it to *localStorage*.
 		 */
-		createOnEnter: function (e) 
+		createOnEnter: function(e) 
 		{
-			if (e.which === ENTER_KEY && this.$input.val().trim()) 
+			var input = e.target;
+			var title = input.value.trim();
+			
+			if (e.which === ENTER_KEY && title) 
 			{
-				this.todoCollection.create(this.newAttributes());
-				this.$input.val('');
+				var todo = new ns.TodoModel({source:{title:title}});
+				
+				this.todoList.push(todo);
+				input.value = '';
 			}
 		},
 		
 		/**
 		 * Clear all completed todo items, destroying their models.
 		 */
-		clearCompleted: function () 
+		clearCompleted: function() 
 		{
-			_.invoke(this.todoCollection.completed(), 'destroy');
-			return false;
+			this.todoList.removeCompleted();
 		},
 
-		toggleAllComplete: function () 
+		toggleAllComplete: function() 
 		{
 			var completed = this.allChecked;
 			
-			this.todoCollection.each(function(todo) 
+			this.todoList.forEach(function(todo) 
 			{
-				todo.save({completed:completed});
+				todo.completed = completed;
 			});
 		}
 	});
@@ -453,31 +365,29 @@
 	/**
 	 * Todo Router
 	 */
-	app.TodoRouter = conbo.Router.extend
+	ns.TodoRouter = conbo.Router.extend
 	({
 		/**
-		 * Our context wide Todo Collection will automatically be 
+		 * Our context wide filter model will automatically be 
 		 * injected by the context
 		 */
-		todoCollection: undefined,
-		
-		/**
-		 * ... and so will our filter model
-		 */
 		filterModel: undefined,
+		todoList: undefined,
 		
 		routes: 
 		{
 			'*filter': 'setFilter'
 		},
 		
-		setFilter: function (param) 
+		initialize: function(options)
 		{
-			// Set the current filter to be used
-			this.filterModel.set('filter', param || '');
+			this.start();
+		},
+		
+		setFilter: function(param) 
+		{
+			this.filterModel.filter = param || '';
 		}
 	});
 	
-	new app.TodoApplication({namespace:app});
-	
-})(window, document, conbo, $, _);
+});

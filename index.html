@@ -3,8 +3,9 @@
 	
 	<head>
 		<meta charset="utf-8">
-		<title>Conbo.js - Todo Application Example</title>
+		<title>Todo Application Example | Conbo.js</title>
 		<link rel="stylesheet" href="css/base.css">
+		<link rel="stylesheet" href="css/todo.css">
 	</head>
 	
 	<body>
@@ -19,7 +20,20 @@
 			<section id="main" cb-include="mainVisible">
 				<input id="toggle-all" type="checkbox" cb-onclick="toggleAllComplete" cb-checked="allChecked">
 				<label for="toggle-all">Mark all as complete</label>
-				<ul id="todo-list"></ul>
+				<ul id="todo-list">
+					<li cb-repeat="todoList:TodoItemRenderer|todoFilter">
+						<div class="view" cb-class="data.completed:completed">
+							<!--
+							Using cb-bind with input elements will automatically create a 2-way binding between 
+							the bound property and DOM element: change one, the other changes automatically
+							-->
+							<input class="toggle" type="checkbox" cb-bind="data.completed" cb-onclick="toggleCompleted">
+							<label cb-html="data.title" cb-ondblclick="edit"></label>
+							<button class="destroy" cb-onclick="clear"></button>
+						</div>
+						<input class="edit" cb-bind="data.title" cb-onkeypress="updateOnEnter" cb-onkeydown="revertOnEscape" cb-onblur="close">
+					</li>
+				</ul>
 			</section>
 			<!-- With cb-* data binding, the IDs are only needed for CSS purposes -->
 			<footer id="footer" cb-include="footerVisible">
@@ -27,13 +41,13 @@
 				<span id="todo-count"><strong cb-html="remaining"></strong> <span cb-html="remaining|itemOrItems"></span> left</span>
 				<ul id="filters">
 					<li>
-						<a class="selected" href="#/">All</a>
+						<a class="todo-all" href="#!/">All</a>
 					</li>
 					<li>
-						<a href="#/active">Active</a>
+						<a class="todo-active" href="#!/active">Active</a>
 					</li>
 					<li>
-						<a href="#/completed">Completed</a>
+						<a class="todo-completed" href="#!/completed">Completed</a>
 					</li>
 				</ul>
 				<button
@@ -50,24 +64,8 @@
 			<p>Double-click to edit a todo</p>
 		</footer>
 		
-		<script type="text/template" id="item-template">
-			<div class="view" cb-class="data.completed:completed">
-				<!--
-				Using cb-bind with input elements will automatically create a 2-way binding between 
-				the bound property and DOM element: change one, the other changes automatically
-				-->
-				<input class="toggle" type="checkbox" cb-bind="data.completed" cb-onclick="toggleCompleted">
-				<label cb-html="data.title" cb-ondblclick="edit"></label>
-				<button class="destroy" cb-onclick="clear"></button>
-			</div>
-			<input class="edit" cb-bind="data.title" cb-onkeypress="updateOnEnter" cb-onkeydown="revertOnEscape" cb-onblur="close">
-		</script>
-		
-		<script src="libs/jquery.js"></script>
-		<script src="libs/lodash.js"></script>
-		<script src="libs/conbo-complete.js"></script>
-		<script src="libs/conbo-localstorage.js"></script>
-		
+		<script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+		<script src="libs/conbo.js"></script>
 		<script src="js/todo-example.js"></script>
 		
 	</body>

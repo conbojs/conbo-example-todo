@@ -1,0 +1,13 @@
+@CHARSET "UTF-8";
+
+.filter-all .todo-all { font-weight: bold; }
+.filter-all .todo-active { font-weight: normal; }
+.filter-all .todo-completed { font-weight: normal; }
+
+.filter-active .todo-all { font-weight: normal; }
+.filter-active .todo-active { font-weight: bold; }
+.filter-active .todo-completed { font-weight: normal; }
+
+.filter-completed .todo-all { font-weight: normal; }
+.filter-completed .todo-active { font-weight: normal; }
+.filter-completed .todo-completed { font-weight: bold; }
