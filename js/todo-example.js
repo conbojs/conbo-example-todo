@@ -1,13 +1,13 @@
 /**
- * Simple Todo application example using Conbo.js
+ * Simple Todo application example using ConboJS with ES5 syntax
  * 
  * We've put all the code into a single file For demonstration purposes,
  * but in your own projects we recommend splitting your code into a
- * more sensible file/folder structure.
+ * more sensible class structure.
  * 
  * @author	Neil Rackett
  */
-conbo('conbo.example.todo', window, document, conbo, function(window, document, conbo, undefined)
+conbo('conbo.example.todo', function(undefined)
 {
 	'use strict';
 	
@@ -99,7 +99,7 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		{
 			this.mapSingleton('todoList', ns.TodoList, {name:'conbo-todo-example'})
 				.mapSingleton('filterModel', conbo.Hash, {source:{filter:undefined}})
-				.mapSingleton('router', ns.TodoRouter, this.addTo())
+				.mapSingleton('router', ns.TodoRouter, this)
 				;
 		}
 	});
@@ -127,12 +127,21 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		className: 'view',
 		
 		/**
+		 * Is this item currently being edited?
+		 */
+		editing: false,
+
+		/**
 		 * The TodoView listens for changes to its model and re-renders automatically
 		 */
 		initialize: function() 
 		{
 			this.bindAll();
-			this.$input = this.$('.edit');
+
+			// Prevent change events refreshing the list
+			this.data.addEventListener('change', function(event) {
+				event.stopImmediatePropagation();
+			}, this, 9999);
 		},
 
 		/**
@@ -148,8 +157,8 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		 */
 		edit: function() 
 		{
-			this.$el.addClass('editing');
-			this.$input.focus();
+			this.prevTitle = this.data.title;
+			this.editing = true;
 		},
 		
 		/**
@@ -157,8 +166,7 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		 */
 		close: function() 
 		{
-			var value = this.$input.val();
-			var trimmedValue = value.trim();
+			this.data.title = this.data.title.trim();
 
 			/**
 			 * We don't want to handle blur events from an item that is no
@@ -166,21 +174,17 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 			 * benefit of us not having to maintain state in the DOM and the
 			 * JavaScript logic.
 			 */
-			if (!this.$el.hasClass('editing')) 
+			if (!this.editing)
 			{
 				return;
 			}
 			
-			if (trimmedValue) 
-			{
-				this.data.title = trimmedValue;
-			}
-			else 
+			if (!this.data.title)
 			{
 				this.clear();
 			}
 
-			this.$el.removeClass('editing');
+			this.editing = false;
 		},
 		
 		/**
@@ -198,11 +202,12 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		 * If you're pressing `escape` we revert your change by simply leaving
 		 * the `editing` state.
 		 */
-		revertOnEscape: function(e) 
+		revertOnEscape: function(e)
 		{
 			if (e.which === ESC_KEY)
 			{
-				this.$el.removeClass('editing');
+				this.data.title = this.prevTitle;
+				this.editing = false;
 			}
 		},
 
@@ -242,11 +247,6 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		remaining: 0,
 		
 		/**
-		 * Our template for the line of statistics at the bottom of the app.
-		 */
-		statsTemplate: $('#stats-template').html(),
-		
-		/**
 		 * Are all items checked?
 		 */
 		allChecked: false,
@@ -254,7 +254,7 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		/**
 		 * At initialization we bind to the relevant events on the `Todos`
 		 * collection, when items are added or changed. Kick things off by
-		 * loading any preexisting todos that might be saved in *localStorage*.
+		 * loading any pre-existing todos that might be saved in *localStorage*.
 		 */
 		initialize: function() 
 		{
@@ -270,12 +270,7 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 		
 		refresh: function()
 		{
-			this.$el.removeClass(function(index, css) 
-			{
-				return (css.match(/(^|\s)filter-\S+/g) || []).join(' ');
-			})
-			.addClass('filter-'+(this.filterModel.filter || 'all'));
-			
+			this.filterClasses = 'filter-'+(this.filterModel.filter || 'all');
 			this.dispatchChange('todoList');
 		},
 		
@@ -334,7 +329,7 @@ conbo('conbo.example.todo', window, document, conbo, function(window, document, 
 			var input = e.target;
 			var title = input.value.trim();
 			
-			if (e.which === ENTER_KEY && title) 
+			if (e.which === ENTER_KEY && title)
 			{
 				var todo = new ns.TodoModel({source:{title:title}});
 				

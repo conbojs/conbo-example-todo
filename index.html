@@ -3,7 +3,7 @@
 	
 	<head>
 		<meta charset="utf-8">
-		<title>Todo Application Example | Conbo.js</title>
+		<title>Todo Application Example | ConboJS</title>
 		<link rel="stylesheet" href="css/base.css">
 		<link rel="stylesheet" href="css/todo.css">
 	</head>
@@ -11,7 +11,7 @@
 	<body>
 		
 		<!-- The cb-app attribute can be used to specify the root element of your application -->
-		<section cb-app="TodoApplication" id="todoapp">
+		<section cb-app="TodoApplication" id="todoapp" cb-classes="filterClasses">
 			<header id="header">
 				<h1>todos</h1>
 				<!-- You can bind most standard DOM events to your View using cb-* attributes -->
@@ -21,7 +21,7 @@
 				<input id="toggle-all" type="checkbox" cb-onclick="toggleAllComplete" cb-checked="allChecked">
 				<label for="toggle-all">Mark all as complete</label>
 				<ul id="todo-list">
-					<li cb-repeat="todoList:TodoItemRenderer|todoFilter">
+					<li cb-repeat="todoList:TodoItemRenderer|todoFilter" cb-class="editing">
 						<div class="view" cb-class="data.completed:completed">
 							<!--
 							Using cb-bind with input elements will automatically create a 2-way binding between 
@@ -37,8 +37,10 @@
 			</section>
 			<!-- With cb-* data binding, the IDs are only needed for CSS purposes -->
 			<footer id="footer" cb-include="footerVisible">
-				<!-- You can bind properties to DOM elements using cb-* attributes in the format property|parseFunction -->
-				<span id="todo-count"><strong cb-html="remaining"></strong> <span cb-html="remaining|itemOrItems"></span> left</span>
+				<span id="todo-count">
+					<!-- You can modify the output of bound properties using a parse function in the format property|parseFunction -->
+					<strong>{{remaining}}</strong> {{remaining|itemOrItems}} left
+				</span>
 				<ul id="filters">
 					<li>
 						<a class="todo-all" href="#!/">All</a>
@@ -64,7 +66,6 @@
 			<p>Double-click to edit a todo</p>
 		</footer>
 		
-		<script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
 		<script src="libs/conbo.js"></script>
 		<script src="js/todo-example.js"></script>
 		
